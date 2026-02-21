@@ -1,8 +1,10 @@
 services:
-  - type: worker
+  - type: web                 # Изменили worker → web
     name: ai-detective-bot
-    runtime: docker
+    runtime: python           # Изменили docker → python (так проще)
     plan: free
+    buildCommand: pip install -r requirements.txt
+    startCommand: python bot.py
     envVars:
       - key: TOKEN
         value: 8514983133:AAF4dvNmweMg8LOBVB2evu_bw3td3d_p8jM
