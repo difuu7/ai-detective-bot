@@ -1124,6 +1124,14 @@ def list_stats(message):
     except Exception as e:
         bot.send_message(message.chat.id, f"❌ Ошибка: {e}")
 
+# ===== ЭТОТ ОБРАБОТЧИК ДОЛЖЕН БЫТЬ САМЫМ ПОСЛЕДНИМ! =====
+@bot.message_handler(func=lambda msg: True)
+def all_other(message):
+    bot.reply_to(
+        message,
+        "👇 **Просто выбери кнопку!**",
+        reply_markup=get_main_keyboard()
+    )
 # ========== ЗАПУСК ==========
 if __name__ == "__main__":
     print("🚀 Запуск бота...")
