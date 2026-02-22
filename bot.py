@@ -1,32 +1,26 @@
 # -*- coding: utf-8 -*-
 import telebot
 import os
-import random
 import sqlite3
-import time
-from datetime import datetime, timedelta
-import threading
-import schedule
-import os
-import json
 import csv
-from datetime import datetime
+import json
+import time
+import random
+from datetime import datetime, timedelta
 from PIL import Image
 import io
-
-# Папка для исследовательской статистики
-STATS_DIR = "research_stats"
-os.makedirs(STATS_DIR, exist_ok=True)
+import threading
+import schedule
 
 # ========== НАСТРОЙКИ ==========
-# Берём токен из переменных окружения Railway
-TOKEN = os.environ.get('BOT_TOKEN', "8514983133:AAF4dvNmweMg8LOBVB2evu_bw3td3d_p8jM")
+TOKEN = "8514983133:AAF4dvNmweMg8LOBVB2evu_bw3td3d_p8jM"
 bot = telebot.TeleBot(TOKEN)
 
-# Создаём папки для фото
+# Создаем папки
 os.makedirs("images/real", exist_ok=True)
 os.makedirs("images/ai", exist_ok=True)
 os.makedirs("images/suggested", exist_ok=True)
+os.makedirs("research_stats", exist_ok=True)
 
 # Словарь для текущих игр
 current_games = {}
@@ -56,7 +50,7 @@ def init_db():
     conn = sqlite3.connect('ai_detective.db')
     cursor = conn.cursor()
     
-    # Таблица пользователей (оставляем как есть)
+    # Таблица пользователей
     cursor.execute('''
     CREATE TABLE IF NOT EXISTS users (
         user_id INTEGER PRIMARY KEY,
@@ -75,7 +69,7 @@ def init_db():
     )
     ''')
     
-    # Таблица изображений с категориями (НОВАЯ)
+    # Таблица изображений с категориями
     cursor.execute('''
     CREATE TABLE IF NOT EXISTS images (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -116,87 +110,36 @@ def init_db():
     
     conn.commit()
     conn.close()
-    print("✅ База данных обновлена")
+    print("✅ База данных создана")
 
 def load_images():
-    """Загружает изображения из папок с категориями"""
     conn = sqlite3.connect('ai_detective.db')
     cursor = conn.cursor()
     
     cursor.execute("SELECT COUNT(*) FROM images")
     if cursor.fetchone()[0] == 0:
-        print("📸 Загружаем изображения с категориями...")
+        print("📸 Загружаем изображения...")
         
-        # Проходим по всем папкам
         for label in ['real', 'ai']:
             base_path = f"images/{label}"
             if os.path.exists(base_path):
-                # Проходим по всем подпапкам (категориям)
                 for category in os.listdir(base_path):
                     category_path = os.path.join(base_path, category)
                     if os.path.isdir(category_path):
-                        # Проходим по файлам в папке категории
                         for f in os.listdir(category_path):
                             if f.lower().endswith(('.jpg', '.jpeg', '.png')):
                                 file_path = os.path.join(category_path, f)
-                                cursor.execute("""
-                                    INSERT INTO images 
-                                    (file_path, label, filename, category) 
+                                cursor.execute('''
+                                    INSERT INTO images (file_path, label, filename, category)
                                     VALUES (?, ?, ?, ?)
-                                """, (file_path, label, f, category))
-                                print(f"  + {label}/{category}: {f}")
+                                ''', (file_path, label, f, category))
         
         conn.commit()
         cursor.execute("SELECT COUNT(*) FROM images")
         total = cursor.fetchone()[0]
-        
-        # Показываем статистику по категориям
-        cursor.execute("SELECT category, label, COUNT(*) FROM images GROUP BY category, label")
-        stats = cursor.fetchall()
-        print(f"\n✅ Загружено {total} изображений:")
-        for cat, lbl, cnt in stats:
-            emoji = "📸" if lbl == 'real' else "🤖"
-            print(f"  {emoji} {cat}: {cnt}")
+        print(f"✅ Загружено {total} изображений")
     
     conn.close()
-
-def save_stats_to_json(data, filename):
-    """Сохраняет данные в JSON файл"""
-    filepath = os.path.join(STATS_DIR, filename)
-    with open(filepath, 'w', encoding='utf-8') as f:
-        json.dump(data, f, ensure_ascii=False, indent=2)
-    print(f"✅ JSON сохранен: {filename}")
-
-def save_stats_to_csv(data, filename, headers):
-    """Сохраняет данные в CSV файл (для Excel)"""
-    filepath = os.path.join(STATS_DIR, filename)
-    with open(filepath, 'w', newline='', encoding='utf-8-sig') as f:
-        writer = csv.writer(f)
-        writer.writerow(headers)
-        writer.writerows(data)
-    print(f"✅ CSV сохранен: {filename}")
-
-def guess_category_from_filename(filename):
-    """Определяет категорию изображения по имени файла"""
-    filename = filename.lower()
-    
-    categories = {
-        'people': ['person', 'people', 'man', 'woman', 'child', 'girl', 'boy', 'portrait', 'face', 'human'],
-        'animals': ['cat', 'dog', 'animal', 'pet', 'bird', 'fish', 'horse', 'cow', 'pig', 'lion', 'tiger', 'bear'],
-        'nature': ['nature', 'landscape', 'mountain', 'forest', 'tree', 'flower', 'plant', 'sky', 'cloud', 'sunset', 'sunrise', 'beach', 'ocean', 'sea', 'river', 'lake'],
-        'urban': ['city', 'urban', 'building', 'street', 'road', 'house', 'architecture', 'town', 'village'],
-        'food': ['food', 'pizza', 'burger', 'cake', 'pasta', 'rice', 'soup', 'salad', 'fruit', 'vegetable', 'meal', 'drink', 'coffee', 'tea'],
-        'objects': ['object', 'item', 'thing', 'product', 'gadget', 'device', 'tool', 'furniture', 'chair', 'table', 'bed', 'car', 'vehicle'],
-        'art': ['art', 'painting', 'drawing', 'sketch', 'digital', 'abstract', 'cartoon', 'anime'],
-        'other': []
-    }
-    
-    for category, keywords in categories.items():
-        for keyword in keywords:
-            if keyword in filename:
-                return category
-    
-    return 'other'
 
 def get_random_image():
     conn = sqlite3.connect('ai_detective.db')
@@ -352,33 +295,33 @@ def get_top_users(limit=10):
     conn.close()
     return users
 
-def check_daily_challenge(user_id):
-    today = datetime.now().strftime("%Y-%m-%d")
-    
-    conn = sqlite3.connect('ai_detective.db')
-    cursor = conn.cursor()
-    cursor.execute("SELECT last_daily FROM users WHERE user_id=?", (user_id,))
-    result = cursor.fetchone()
-    
-    if result and result[0] == today:
-        conn.close()
-        return False
-    
-    cursor.execute("UPDATE users SET last_daily=? WHERE user_id=?", (today, user_id))
-    
-    cursor.execute("SELECT daily_done FROM users WHERE user_id=?", (user_id,))
-    daily_count = cursor.fetchone()
-    if daily_count and daily_count[0]:
-        daily_list = daily_count[0].split(',')
-        if today not in daily_list:
-            new_daily = daily_count[0] + today + ','
-            cursor.execute("UPDATE users SET daily_done=? WHERE user_id=?", (new_daily, user_id))
-    else:
-        cursor.execute("UPDATE users SET daily_done=? WHERE user_id=?", (today + ',', user_id))
-    
-    conn.commit()
-    conn.close()
-    return True
+# ========== ФУНКЦИЯ ИСПРАВЛЕНИЯ ФОТО ==========
+def fix_image_size(file_path, max_size=1024):
+    try:
+        img = Image.open(file_path)
+        width, height = img.size
+        
+        if width > max_size or height > max_size or width < 200 or height < 200:
+            if width > height:
+                new_width = max_size
+                new_height = int(height * (max_size / width))
+            else:
+                new_height = max_size
+                new_width = int(width * (max_size / height))
+            
+            if new_width < 300:
+                new_width = 300
+                new_height = int(height * (300 / width))
+            
+            img = img.resize((new_width, new_height), Image.LANCZOS)
+            
+            temp_path = file_path.replace('.', '_temp.')
+            img.save(temp_path, quality=85, optimize=True)
+            return temp_path
+        
+        return file_path
+    except:
+        return file_path
 
 # ========== КЛАВИАТУРЫ ==========
 def get_main_keyboard():
@@ -387,37 +330,41 @@ def get_main_keyboard():
         telebot.types.KeyboardButton("🎮 ИГРАТЬ"),
         telebot.types.KeyboardButton("📊 СТАТИСТИКА"),
         telebot.types.KeyboardButton("🏆 РЕЙТИНГ"),
-        telebot.types.KeyboardButton("🎯 БОНУСЫ"),
-        telebot.types.KeyboardButton("📤 ПРЕДЛОЖИТЬ"),
         telebot.types.KeyboardButton("❓ ПОМОЩЬ")
     )
     return keyboard
 
-def get_bonus_keyboard():
-    keyboard = telebot.types.ReplyKeyboardMarkup(resize_keyboard=True, row_width=2)
-    keyboard.add(
-        telebot.types.KeyboardButton("🏅 ДОСТИЖЕНИЯ"),
-        telebot.types.KeyboardButton("📈 ПРОГРЕСС"),
-        telebot.types.KeyboardButton("📅 ЧЕЛЛЕНДЖ"),
-        telebot.types.KeyboardButton("🔙 НАЗАД")
-    )
-    return keyboard
-
-# ========== КОМАНДЫ ==========
+# ========== ОСНОВНЫЕ КОМАНДЫ ==========
 @bot.message_handler(commands=['start'])
 def start(message):
     bot.reply_to(
         message,
         "👋 **Привет! Я ИИ-Детектив!**\n\n"
-        "Я покажу тебе фото, а ты угадай:\n"
-        "📸 Это **реальное** фото или 🤖 **создано ИИ**?\n\n"
+        "Я покажу тебе фото, а ты угадай: это реальное или создано ИИ?\n\n"
         "👇 **Выбирай кнопку ниже!**",
         reply_markup=get_main_keyboard(),
         parse_mode="Markdown"
     )
 
-@bot.message_handler(commands=['🎮 ИГРАТЬ'])
-def play(message):
+@bot.message_handler(commands=['help'])
+def help_command(message):
+    bot.reply_to(
+        message,
+        "❓ **Как играть?**\n\n"
+        "1️⃣ Жми 🎮 ИГРАТЬ\n"
+        "2️⃣ Смотри на фото\n"
+        "3️⃣ Выбирай: РЕАЛЬНОЕ или ИИ\n\n"
+        "🔍 **Советы:**\n"
+        "• ИИ путает пальцы (6 вместо 5)\n"
+        "• Текст часто бессмысленный\n"
+        "• Тени падают странно",
+        reply_markup=get_main_keyboard(),
+        parse_mode="Markdown"
+    )
+
+@bot.message_handler(func=lambda msg: msg.text == "🎮 ИГРАТЬ")
+@bot.message_handler(commands=['game'])
+def game(message):
     image = get_random_image()
     
     if not image:
@@ -426,10 +373,15 @@ def play(message):
     
     image_id, file_path, correct_label = image
     
-    # 🔧 АВТОМАТИЧЕСКИ ИСПРАВЛЯЕМ РАЗМЕР ФОТО
+    current_games[message.chat.id] = {
+        'image_id': image_id,
+        'correct': correct_label,
+        'start_time': time.time()
+    }
+    
+    # Исправляем размер фото
     safe_path = fix_image_size(file_path)
     
-    # Создаем клавиатуру
     keyboard = telebot.types.InlineKeyboardMarkup()
     keyboard.row(
         telebot.types.InlineKeyboardButton("📸 РЕАЛЬНОЕ", callback_data=f"real_{image_id}"),
@@ -437,24 +389,19 @@ def play(message):
     )
     
     try:
-        # Отправляем фото (исправленное или оригинал)
         with open(safe_path, 'rb') as photo:
             bot.send_photo(
                 message.chat.id,
                 photo,
                 caption="👇 **Как думаешь?**",
-                reply_markup=keyboard,
-                parse_mode="Markdown"
+                reply_markup=keyboard
             )
         
-        # Если использовали временный файл - удаляем его
         if safe_path != file_path:
             os.remove(safe_path)
-            print(f"🗑️ Временный файл удален: {os.path.basename(safe_path)}")
             
     except Exception as e:
-        bot.reply_to(message, f"😕 Ошибка загрузки фото: {e}")
-        # Если ошибка, тоже удаляем временный файл
+        bot.reply_to(message, f"😕 Ошибка: {e}")
         if safe_path != file_path and os.path.exists(safe_path):
             os.remove(safe_path)
 
@@ -465,9 +412,6 @@ def handle_answer(call):
     image_id = int(data[1])
     user_id = call.from_user.id
     username = call.from_user.username or f"user_{user_id}"
-    
-    # Проверяем ежедневный челлендж
-    is_daily = check_daily_challenge(user_id)
     
     # Получаем правильный ответ
     conn = sqlite3.connect('ai_detective.db')
@@ -522,8 +466,11 @@ def handle_answer(call):
     
     if call.message.chat.id in current_games:
         del current_games[call.message.chat.id]
+    
+    bot.answer_callback_query(call.id)
 
 @bot.message_handler(func=lambda msg: msg.text == "📊 СТАТИСТИКА")
+@bot.message_handler(commands=['stats'])
 def show_stats(message):
     stats = get_user_stats(message.from_user.id)
     
@@ -538,23 +485,16 @@ def show_stats(message):
     text = f"📊 **Твоя статистика**\n\n"
     text += f"🎮 Игр: {stats['games']}\n"
     text += f"✅ Правильно: {stats['correct']}\n"
-    text += f"❌ Ошибок: {stats['games'] - stats['correct']}\n"
     text += f"📈 Точность: {stats['accuracy']}%\n"
     text += f"🏆 Очки: {stats['score']}\n\n"
     text += f"🤖 Угадано ИИ: {stats['ai_correct']}\n"
     text += f"📸 Угадано фото: {stats['real_correct']}\n"
-    text += f"🔥 Серия: {stats['streak']} (рекорд: {stats['max_streak']})\n"
-    text += f"📤 Предложено фото: {stats['contributed']}\n\n"
-    
-    if stats['achievements']:
-        text += "🏅 **Достижения:**\n"
-        for ach in stats['achievements'][:6]:
-            if ach in ACHIEVEMENTS:
-                text += f"• {ACHIEVEMENTS[ach]['icon']} {ACHIEVEMENTS[ach]['name']}\n"
+    text += f"🔥 Серия: {stats['streak']} (рекорд: {stats['max_streak']})"
     
     bot.reply_to(message, text, reply_markup=get_main_keyboard(), parse_mode="Markdown")
 
 @bot.message_handler(func=lambda msg: msg.text == "🏆 РЕЙТИНГ")
+@bot.message_handler(commands=['top'])
 def show_top(message):
     users = get_top_users()
     
@@ -578,222 +518,40 @@ def show_top(message):
     
     bot.reply_to(message, text, reply_markup=get_main_keyboard(), parse_mode="Markdown")
 
-@bot.message_handler(func=lambda msg: msg.text == "🎯 БОНУСЫ")
-def bonus_menu(message):
-    bot.reply_to(
-        message,
-        "🎯 **Бонусы и достижения**\n\n"
-        "Выбери, что хочешь посмотреть:",
-        reply_markup=get_bonus_keyboard(),
-        parse_mode="Markdown"
-    )
-
-@bot.message_handler(func=lambda msg: msg.text == "🏅 ДОСТИЖЕНИЯ")
-def show_achievements(message):
-    stats = get_user_stats(message.from_user.id)
-    
-    if not stats:
-        bot.reply_to(
-            message,
-            "😕 Сначала поиграй!",
-            reply_markup=get_bonus_keyboard()
-        )
-        return
-    
-    text = "🏅 **Все достижения**\n\n"
-    
-    for ach_id, ach in ACHIEVEMENTS.items():
-        if ach_id in stats['achievements']:
-            text += f"✅ {ach['icon']} {ach['name']}\n"
-        else:
-            text += f"⬜ {ach['icon']} {ach['name']}\n"
-    
-    bot.reply_to(message, text, reply_markup=get_bonus_keyboard(), parse_mode="Markdown")
-
-@bot.message_handler(func=lambda msg: msg.text == "📈 ПРОГРЕСС")
-def show_progress(message):
-    stats = get_user_stats(message.from_user.id)
-    
-    if not stats or stats['games'] < 5:
-        bot.reply_to(
-            message,
-            "😕 Нужно больше игр для графика (минимум 5)!",
-            reply_markup=get_bonus_keyboard()
-        )
-        return
-    
-    # Простая текстовая статистика вместо графика
-    text = f"📈 **Твой прогресс**\n\n"
-    text += f"📊 Всего игр: {stats['games']}\n"
-    text += f"✅ Точность: {stats['accuracy']}%\n"
-    text += f"🔥 Лучшая серия: {stats['max_streak']}\n"
-    text += f"🎯 Угадано ИИ: {stats['ai_correct']}\n"
-    text += f"📸 Угадано фото: {stats['real_correct']}\n\n"
-    text += f"Продолжай в том же духе! 💪"
-    
-    bot.reply_to(message, text, reply_markup=get_bonus_keyboard(), parse_mode="Markdown")
-
-@bot.message_handler(func=lambda msg: msg.text == "📅 ЧЕЛЛЕНДЖ")
-def daily_challenge(message):
-    is_new = check_daily_challenge(message.from_user.id)
-    
-    if is_new:
-        bot.reply_to(
-            message,
-            "📅 **Ежедневный челлендж!**\n\n"
-            "Сегодня за каждую игру ты получаешь:\n"
-            "• ✅ Правильно: **+20 очков** (вместо 10)\n"
-            "• ❌ Ошибка: **-5 очков**\n\n"
-            "👉 Жми 🎮 ИГРАТЬ!",
-            reply_markup=get_main_keyboard(),
-            parse_mode="Markdown"
-        )
-    else:
-        bot.reply_to(
-            message,
-            "✅ **Ты уже сегодня играл!**\n\n"
-            "Возвращайся завтра за новым бонусом!",
-            reply_markup=get_main_keyboard(),
-            parse_mode="Markdown"
-        )
-
-@bot.message_handler(func=lambda msg: msg.text == "📤 ПРЕДЛОЖИТЬ")
-def suggest_photo(message):
-    bot.reply_to(
-        message,
-        "📤 **Предложить фото**\n\n"
-        "Хочешь добавить своё фото в игру?\n\n"
-        "1️⃣ Отправь мне фото\n"
-        "2️⃣ В подписи напиши:\n"
-        "   • `real` - если это настоящее фото\n"
-        "   • `ai` - если создано ИИ\n\n"
-        "📝 Пример подписи: `real`\n\n"
-        "После проверки фото появится в игре,\n"
-        "а ты получишь достижение!",
-        reply_markup=get_main_keyboard(),
-        parse_mode="Markdown"
-    )
-
-@bot.message_handler(content_types=['photo'])
-def handle_photo(message):
-    caption = message.caption or ""
-    
-    if caption.lower() not in ['real', 'ai']:
-        bot.reply_to(
-            message,
-            "❌ Напиши в подписи `real` или `ai`!",
-            reply_markup=get_main_keyboard()
-        )
-        return
-    
-    # Скачиваем фото
-    file_info = bot.get_file(message.photo[-1].file_id)
-    downloaded_file = bot.download_file(file_info.file_path)
-    
-    # Сохраняем
-    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-    filename = f"user_{message.from_user.id}_{timestamp}.jpg"
-    file_path = os.path.join("images/suggested", filename)
-    
-    with open(file_path, 'wb') as f:
-        f.write(downloaded_file)
-    
-    # Сохраняем в базу
-    conn = sqlite3.connect('ai_detective.db')
-    cursor = conn.cursor()
-    cursor.execute('''
-        INSERT INTO suggestions (user_id, file_path, label, timestamp)
-        VALUES (?, ?, ?, ?)
-    ''', (message.from_user.id, file_path, caption.lower(),
-          datetime.now().strftime("%Y-%m-%d %H:%M:%S")))
-    conn.commit()
-    conn.close()
-    
-    bot.reply_to(
-        message,
-        "✅ **Спасибо!**\n\n"
-        "Фото отправлено на проверку.\n"
-        "Когда его одобрят, ты получишь достижение!",
-        reply_markup=get_main_keyboard(),
-        parse_mode="Markdown"
-    )
-
-@bot.message_handler(func=lambda msg: msg.text == "🔙 НАЗАД")
-def back(message):
-    bot.reply_to(
-        message,
-        "👋 Главное меню:",
-        reply_markup=get_main_keyboard()
-    )
-
-@bot.message_handler(func=lambda msg: msg.text == "❓ ПОМОЩЬ")
-def help_message(message):
-    bot.reply_to(
-        message,
-        "❓ **Как играть?**\n\n"
-        "1️⃣ Жми 🎮 **ИГРАТЬ**\n"
-        "2️⃣ Смотри на фото\n"
-        "3️⃣ Выбирай:\n"
-        "   📸 РЕАЛЬНОЕ или 🤖 ИИ\n\n"
-        "🔍 **Как отличить ИИ?**\n"
-        "• ИИ путает пальцы (6 вместо 5)\n"
-        "• Текст часто бессмысленный\n"
-        "• Тени падают странно\n"
-        "• Глаза 'стеклянные'\n\n"
-        "🏆 Играй, получай достижения\n"
-        "и становись лучшим детективом!",
-        reply_markup=get_main_keyboard(),
-        parse_mode="Markdown"
-    )
-
-# ========== ПОЛНАЯ ИССЛЕДОВАТЕЛЬСКАЯ СТАТИСТИКА ==========
+# ========== ИССЛЕДОВАТЕЛЬСКАЯ СТАТИСТИКА (ТОЛЬКО ДЛЯ ТЕБЯ) ==========
 @bot.message_handler(commands=['research_stats'])
 def research_stats(message):
     # 🔥 ЗАМЕНИ 123456789 НА СВОЙ TELEGRAM ID!
     MY_ID = 1960661466
     
-    # Проверяем, что команду вызвал ты
     if message.from_user.id != MY_ID:
-        bot.reply_to(message, "⛔ Эта команда только для исследователя")
+        bot.reply_to(message, "⛔ Нет доступа")
         return
     
-    bot.send_message(message.chat.id, "📊 **Начинаю сбор полной статистики...**", parse_mode="Markdown")
+    bot.send_message(message.chat.id, "📊 Начинаю сбор полной статистики...")
     
     try:
         conn = sqlite3.connect('ai_detective.db')
         cursor = conn.cursor()
         
-        # Создаем папку для статистики
-        os.makedirs("research_stats", exist_ok=True)
         timestamp = datetime.now().strftime('%Y%m%d_%H%M')
         
         # ===== 1. СТАТИСТИКА ПО ПОЛЬЗОВАТЕЛЯМ =====
         cursor.execute("""
-            SELECT 
-                user_id,
-                username,
-                score,
-                games,
-                correct,
-                ROUND(100.0 * correct / games, 2) as accuracy,
-                streak,
-                max_streak,
-                ai_correct,
-                real_correct,
-                contributed
-            FROM users
-            WHERE games > 0
-            ORDER BY score DESC
+            SELECT user_id, username, score, games, correct, 
+                   ROUND(100.0 * correct / games, 2) as accuracy,
+                   streak, max_streak, ai_correct, real_correct
+            FROM users WHERE games > 0 ORDER BY score DESC
         """)
         users_data = cursor.fetchall()
         
         with open(f"research_stats/users_{timestamp}.csv", 'w', newline='', encoding='utf-8-sig') as f:
             writer = csv.writer(f)
             writer.writerow(["user_id", "username", "score", "games", "correct", "accuracy", 
-                           "streak", "max_streak", "ai_correct", "real_correct", "contributed"])
+                           "streak", "max_streak", "ai_correct", "real_correct"])
             writer.writerows(users_data)
         
-        # ===== 2. СТАТИСТИКА ПО КАТЕГОРИЯМ (ПОЛНАЯ) =====
+        # ===== 2. СТАТИСТИКА ПО КАТЕГОРИЯМ =====
         cursor.execute("""
             SELECT 
                 i.category,
@@ -801,9 +559,7 @@ def research_stats(message):
                 COUNT(*) as attempts,
                 SUM(h.is_correct) as correct,
                 ROUND(100.0 * SUM(h.is_correct) / COUNT(*), 2) as accuracy,
-                ROUND(AVG(h.response_time), 2) as avg_time,
-                MIN(h.response_time) as min_time,
-                MAX(h.response_time) as max_time
+                ROUND(AVG(h.response_time), 2) as avg_time
             FROM history h
             JOIN images i ON h.image_id = i.id
             GROUP BY i.category, i.label
@@ -813,18 +569,16 @@ def research_stats(message):
         
         with open(f"research_stats/categories_{timestamp}.csv", 'w', newline='', encoding='utf-8-sig') as f:
             writer = csv.writer(f)
-            writer.writerow(["category", "type", "attempts", "correct", "accuracy", 
-                           "avg_time", "min_time", "max_time"])
+            writer.writerow(["category", "type", "attempts", "correct", "accuracy", "avg_time"])
             writer.writerows(category_data)
         
         # ===== 3. СВОДНАЯ ПО КАТЕГОРИЯМ =====
         cursor.execute("""
             SELECT 
                 i.category,
-                COUNT(*) as total_attempts,
-                SUM(h.is_correct) as total_correct,
-                ROUND(100.0 * SUM(h.is_correct) / COUNT(*), 2) as accuracy,
-                ROUND(AVG(h.response_time), 2) as avg_time
+                COUNT(*) as attempts,
+                SUM(h.is_correct) as correct,
+                ROUND(100.0 * SUM(h.is_correct) / COUNT(*), 2) as accuracy
             FROM history h
             JOIN images i ON h.image_id = i.id
             GROUP BY i.category
@@ -838,8 +592,7 @@ def research_stats(message):
                 DATE(timestamp) as date,
                 COUNT(*) as games,
                 SUM(is_correct) as correct,
-                ROUND(100.0 * SUM(is_correct) / COUNT(*), 2) as accuracy,
-                ROUND(AVG(response_time), 2) as avg_time
+                ROUND(100.0 * SUM(is_correct) / COUNT(*), 2) as accuracy
             FROM history
             GROUP BY DATE(timestamp)
             ORDER BY date DESC
@@ -849,7 +602,7 @@ def research_stats(message):
         
         with open(f"research_stats/daily_{timestamp}.csv", 'w', newline='', encoding='utf-8-sig') as f:
             writer = csv.writer(f)
-            writer.writerow(["date", "games", "correct", "accuracy", "avg_time"])
+            writer.writerow(["date", "games", "correct", "accuracy"])
             writer.writerows(daily_data)
         
         # ===== 5. СРАВНЕНИЕ ИИ VS РЕАЛЬНЫЕ =====
@@ -858,8 +611,7 @@ def research_stats(message):
                 i.label,
                 COUNT(*) as total,
                 SUM(h.is_correct) as correct,
-                ROUND(100.0 * SUM(h.is_correct) / COUNT(*), 2) as accuracy,
-                ROUND(AVG(h.response_time), 2) as avg_time
+                ROUND(100.0 * SUM(h.is_correct) / COUNT(*), 2) as accuracy
             FROM history h
             JOIN images i ON h.image_id = i.id
             GROUP BY i.label
@@ -868,17 +620,16 @@ def research_stats(message):
         
         with open(f"research_stats/comparison_{timestamp}.csv", 'w', newline='', encoding='utf-8-sig') as f:
             writer = csv.writer(f)
-            writer.writerow(["type", "total", "correct", "accuracy", "avg_time"])
+            writer.writerow(["type", "total", "correct", "accuracy"])
             writer.writerows(comparison_data)
         
-        # ===== 6. САМЫЕ СЛОЖНЫЕ ИЗОБРАЖЕНИЯ (ТОП-20) =====
+        # ===== 6. САМЫЕ СЛОЖНЫЕ ИЗОБРАЖЕНИЯ =====
         cursor.execute("""
             SELECT 
                 i.filename,
                 i.category,
                 i.label,
                 i.times_used,
-                i.correct_count,
                 i.times_used - i.correct_count as wrong,
                 ROUND(100.0 * (i.times_used - i.correct_count) / i.times_used, 2) as error_rate
             FROM images i
@@ -890,10 +641,10 @@ def research_stats(message):
         
         with open(f"research_stats/hardest_{timestamp}.csv", 'w', newline='', encoding='utf-8-sig') as f:
             writer = csv.writer(f)
-            writer.writerow(["filename", "category", "type", "attempts", "correct", "wrong", "error_rate"])
+            writer.writerow(["filename", "category", "type", "attempts", "wrong", "error_rate"])
             writer.writerows(hardest_data)
         
-        # ===== 7. САМЫЕ ЛЕГКИЕ ИЗОБРАЖЕНИЯ (ТОП-20) =====
+        # ===== 7. САМЫЕ ЛЕГКИЕ ИЗОБРАЖЕНИЯ =====
         cursor.execute("""
             SELECT 
                 i.filename,
@@ -914,28 +665,7 @@ def research_stats(message):
             writer.writerow(["filename", "category", "type", "attempts", "correct", "accuracy"])
             writer.writerows(easiest_data)
         
-        # ===== 8. СТАТИСТИКА ПО ВРЕМЕНИ ОТВЕТА =====
-        cursor.execute("""
-            SELECT 
-                CASE 
-                    WHEN response_time < 3 THEN 'быстро (<3 сек)'
-                    WHEN response_time BETWEEN 3 AND 7 THEN 'средне (3-7 сек)'
-                    ELSE 'медленно (>7 сек)'
-                END as speed,
-                COUNT(*) as count,
-                SUM(is_correct) as correct,
-                ROUND(100.0 * SUM(is_correct) / COUNT(*), 2) as accuracy
-            FROM history
-            GROUP BY speed
-        """)
-        speed_data = cursor.fetchall()
-        
-        with open(f"research_stats/speed_{timestamp}.csv", 'w', newline='', encoding='utf-8-sig') as f:
-            writer = csv.writer(f)
-            writer.writerow(["speed", "count", "correct", "accuracy"])
-            writer.writerows(speed_data)
-        
-        # ===== 9. ОБЩАЯ СТАТИСТИКА =====
+        # ===== 8. ОБЩАЯ СТАТИСТИКА =====
         cursor.execute("SELECT COUNT(*) FROM users")
         total_users = cursor.fetchone()[0]
         
@@ -948,55 +678,32 @@ def research_stats(message):
         cursor.execute("SELECT SUM(is_correct) FROM history")
         total_correct = cursor.fetchone()[0] or 0
         
-        cursor.execute("SELECT AVG(response_time) FROM history")
-        avg_response = cursor.fetchone()[0] or 0
-        
-        cursor.execute("SELECT COUNT(*) FROM images WHERE label='real'")
-        real_images = cursor.fetchone()[0]
-        
-        cursor.execute("SELECT COUNT(*) FROM images WHERE label='ai'")
-        ai_images = cursor.fetchone()[0]
-        
         conn.close()
         
         avg_accuracy = round((total_correct / total_games) * 100, 2) if total_games > 0 else 0
         
         # Сохраняем общую статистику
         with open(f"research_stats/summary_{timestamp}.txt", 'w', encoding='utf-8') as f:
-            f.write("========== ОБЩАЯ СТАТИСТИКА ==========\n")
+            f.write("========== ИССЛЕДОВАТЕЛЬСКАЯ СТАТИСТИКА ==========\n")
             f.write(f"Дата сбора: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}\n\n")
-            f.write(f"Пользователи:\n")
-            f.write(f"  Всего: {total_users}\n")
-            f.write(f"  Активных: {active_users}\n")
-            f.write(f"  Неактивных: {total_users - active_users}\n\n")
-            f.write(f"Игры:\n")
+            f.write(f"ОБЩИЕ ДАННЫЕ:\n")
+            f.write(f"  Всего пользователей: {total_users}\n")
+            f.write(f"  Активных игроков: {active_users}\n")
             f.write(f"  Всего игр: {total_games}\n")
             f.write(f"  Правильных ответов: {total_correct}\n")
-            f.write(f"  Ошибок: {total_games - total_correct}\n")
-            f.write(f"  Средняя точность: {avg_accuracy}%\n")
-            f.write(f"  Среднее время ответа: {round(avg_response, 2)} сек\n\n")
-            f.write(f"Изображения:\n")
-            f.write(f"  Реальных фото: {real_images}\n")
-            f.write(f"  ИИ-картинок: {ai_images}\n")
-            f.write(f"  Всего: {real_images + ai_images}\n\n")
+            f.write(f"  Средняя точность: {avg_accuracy}%\n\n")
             
-            f.write("========== СТАТИСТИКА ПО КАТЕГОРИЯМ ==========\n")
-            for cat, total, correct, acc, avg_t in category_summary:
-                f.write(f"{cat}:\n")
-                f.write(f"  Игр: {total}\n")
-                f.write(f"  Точность: {acc}%\n")
-                f.write(f"  Среднее время: {avg_t} сек\n\n")
+            f.write("СРАВНЕНИЕ ИИ VS РЕАЛЬНЫЕ:\n")
+            for label, total, correct, acc in comparison_data:
+                emoji = "🤖" if label == 'ai' else "📸"
+                f.write(f"  {emoji} {label.upper()}: {acc}% ({correct}/{total})\n")
+            f.write("\n")
             
-            if comparison_data:
-                f.write("========== СРАВНЕНИЕ ИИ VS РЕАЛЬНЫЕ ==========\n")
-                for label, total, correct, acc, avg_t in comparison_data:
-                    emoji = "🤖" if label == 'ai' else "📸"
-                    f.write(f"{emoji} {label.upper()}:\n")
-                    f.write(f"  Игр: {total}\n")
-                    f.write(f"  Точность: {acc}%\n")
-                    f.write(f"  Среднее время: {avg_t} сек\n\n")
+            f.write("КАТЕГОРИИ (от худшей к лучшей):\n")
+            for cat, attempts, correct, acc in category_summary:
+                f.write(f"  {cat}: {acc}% ({correct}/{attempts})\n")
         
-        # Создаем JSON со всеми данными
+        # Сохраняем JSON со всеми данными
         full_stats = {
             "date": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
             "total_users": total_users,
@@ -1004,45 +711,38 @@ def research_stats(message):
             "total_games": total_games,
             "total_correct": total_correct,
             "avg_accuracy": avg_accuracy,
-            "avg_response_time": round(avg_response, 2),
-            "images": {
-                "real": real_images,
-                "ai": ai_images
-            },
             "categories": {},
             "comparison": {},
             "hardest": [],
             "easiest": []
         }
         
-        for cat, total, correct, acc, avg_t in category_summary:
+        for cat, attempts, correct, acc in category_summary:
             full_stats["categories"][cat] = {
-                "attempts": total,
-                "accuracy": acc,
-                "avg_time": avg_t
+                "attempts": attempts,
+                "accuracy": acc
             }
         
-        for label, total, correct, acc, avg_t in comparison_data:
+        for label, total, correct, acc in comparison_data:
             full_stats["comparison"][label] = {
                 "attempts": total,
-                "accuracy": acc,
-                "avg_time": avg_t
+                "accuracy": acc
             }
         
-        for img, cat, label, attempts, correct, wrong, error in hardest_data:
+        for img, cat, lbl, attempts, wrong, err in hardest_data:
             full_stats["hardest"].append({
                 "filename": img,
                 "category": cat,
-                "type": label,
+                "type": lbl,
                 "attempts": attempts,
-                "error_rate": error
+                "error_rate": err
             })
         
-        for img, cat, label, attempts, correct, acc in easiest_data:
+        for img, cat, lbl, attempts, correct, acc in easiest_data:
             full_stats["easiest"].append({
                 "filename": img,
                 "category": cat,
-                "type": label,
+                "type": lbl,
                 "attempts": attempts,
                 "accuracy": acc
             })
@@ -1050,47 +750,28 @@ def research_stats(message):
         with open(f"research_stats/full_stats_{timestamp}.json", 'w', encoding='utf-8') as f:
             json.dump(full_stats, f, ensure_ascii=False, indent=2)
         
-        # Формируем краткий отчет для Telegram
-        report = f"✅ **ПОЛНАЯ СТАТИСТИКА СОБРАНА!**\n\n"
-        report += f"📁 **Создано файлов:**\n"
-        report += f"• users_{timestamp}.csv - данные игроков\n"
-        report += f"• categories_{timestamp}.csv - детально по категориям\n"
-        report += f"• daily_{timestamp}.csv - активность по дням\n"
-        report += f"• hardest_{timestamp}.csv - топ-20 сложных фото\n"
-        report += f"• easiest_{timestamp}.csv - топ-20 легких фото\n"
-        report += f"• speed_{timestamp}.csv - анализ скорости ответов\n"
-        report += f"• full_stats_{timestamp}.json - все данные в JSON\n\n"
-        
-        report += f"📊 **Ключевые показатели:**\n"
-        report += f"• 👥 Всего пользователей: {total_users}\n"
-        report += f"• 🎮 Сыграно игр: {total_games}\n"
-        report += f"• 📈 Общая точность: {avg_accuracy}%\n"
-        report += f"• ⏱ Среднее время: {round(avg_response, 2)} сек\n\n"
-        
-        # Добавляем сравнение категорий
-        if category_summary:
-            best_cat = max(category_summary, key=lambda x: x[3])
-            worst_cat = min(category_summary, key=lambda x: x[3])
-            report += f"🏆 **Лучшая категория:** {best_cat[0]} ({best_cat[3]}%)\n"
-            report += f"📉 **Худшая категория:** {worst_cat[0]} ({worst_cat[3]}%)\n\n"
-        
-        # Добавляем сравнение ИИ vs Реальные
-        if len(comparison_data) == 2:
-            ai_acc = comparison_data[0][3] if comparison_data[0][0] == 'ai' else comparison_data[1][3]
-            real_acc = comparison_data[1][3] if comparison_data[1][0] == 'real' else comparison_data[0][3]
-            diff = abs(ai_acc - real_acc)
-            report += f"🤖 **ИИ распознают:** {ai_acc}%\n"
-            report += f"📸 **Реальные фото:** {real_acc}%\n"
-            report += f"📊 **Разница:** {diff}%\n\n"
-        
-        report += f"📥 **Скачай файлы командой:** `/get_stats имя_файла`"
-        
-        bot.send_message(message.chat.id, report,)
+        # Отправляем результат
+        bot.send_message(message.chat.id, 
+            f"✅ **ПОЛНАЯ СТАТИСТИКА СОБРАНА!**\n\n"
+            f"📁 **Создано файлов:**\n"
+            f"• users_{timestamp}.csv - {len(users_data)} пользователей\n"
+            f"• categories_{timestamp}.csv - данные по категориям\n"
+            f"• daily_{timestamp}.csv - активность по дням\n"
+            f"• hardest_{timestamp}.csv - топ-20 сложных фото\n"
+            f"• easiest_{timestamp}.csv - топ-20 легких фото\n"
+            f"• comparison_{timestamp}.csv - ИИ vs Реальные\n"
+            f"• summary_{timestamp}.txt - общая статистика\n"
+            f"• full_stats_{timestamp}.json - все данные в JSON\n\n"
+            f"📊 **Ключевые показатели:**\n"
+            f"• 👥 Всего игроков: {total_users}\n"
+            f"• 🎮 Сыграно игр: {total_games}\n"
+            f"• 📈 Общая точность: {avg_accuracy}%\n\n"
+            f"📥 Используй /list_stats и /get_stats для скачивания",
+            parse_mode="Markdown"
+        )
         
     except Exception as e:
-        bot.send_message(message.chat.id, f"❌ Ошибка при сборе статистики: {e}")
-        import traceback
-        traceback.print_exc()
+        bot.send_message(message.chat.id, f"❌ Ошибка: {str(e)}")
 
 @bot.message_handler(commands=['list_stats'])
 def list_stats(message):
@@ -1099,163 +780,75 @@ def list_stats(message):
         bot.reply_to(message, "⛔ Нет доступа")
         return
     
-    try:
-        files = os.listdir("research_stats")
-        if not files:
-            bot.reply_to(message, "📭 Папка статистики пуста. Сначала выполни /research_stats")
-            return
-        
-        # Сортируем от новых к старым
-        files.sort(reverse=True)
-        
-        text = "📁 **Файлы статистики:**\n\n"
-        for f in files[:10]:  # показываем последние 10
-            size = os.path.getsize(os.path.join("research_stats", f))
-            if size < 1024:
-                size_str = f"{size} B"
-            elif size < 1024*1024:
-                size_str = f"{size/1024:.1f} KB"
-            else:
-                size_str = f"{size/1024/1024:.1f} MB"
-            
-            text += f"• {f} ({size_str})\n"
-        
-        bot.send_message(message.chat.id, text, parse_mode="Markdown")
-        
-    except Exception as e:
-        bot.send_message(message.chat.id, f"❌ Ошибка: {e}")
+    files = os.listdir("research_stats")
+    if not files:
+        bot.reply_to(message, "📭 Папка статистики пуста")
+        return
+    
+    files.sort(reverse=True)
+    text = "📁 **Файлы статистики:**\n\n"
+    for f in files[:15]:
+        size = os.path.getsize(f"research_stats/{f}")
+        if size < 1024:
+            size_str = f"{size} B"
+        elif size < 1024*1024:
+            size_str = f"{size/1024:.1f} KB"
+        else:
+            size_str = f"{size/1024/1024:.1f} MB"
+        text += f"• {f} ({size_str})\n"
+    
+    bot.send_message(message.chat.id, text, parse_mode="Markdown")
 
-# ========== ПОЛУЧЕНИЕ ФАЙЛОВ СТАТИСТИКИ ==========
 @bot.message_handler(commands=['get_stats'])
 def get_stats(message):
-    # 🔥 ТВОЙ TELEGRAM ID
-    MY_ID = 1960661466
-    
-    # Проверка доступа (только для тебя)
+    MY_ID = 1960661466  # 🔥 ТВОЙ ID
     if message.from_user.id != MY_ID:
-        bot.reply_to(message, "⛔ Нет доступа к этой команде")
+        bot.reply_to(message, "⛔ Нет доступа")
         return
     
-    # Разбираем команду: /get_stats filename.csv
     parts = message.text.split()
-    
-    # Если пользователь не указал имя файла
     if len(parts) < 2:
-        # Показываем список последних файлов
-        try:
-            files = os.listdir("research_stats")
-            files.sort(reverse=True)  # новые сверху
-            recent_files = files[:5]  # последние 5
-            
-            if not recent_files:
-                bot.reply_to(message, "📭 Папка статистики пуста. Сначала выполни /research_stats")
-                return
-            
-            file_list = "\n".join([f"• {f}" for f in recent_files])
-            bot.reply_to(message, 
-                f"❌ Укажи имя файла: `/get_stats имя_файла`\n\n"
-                f"Последние файлы:\n{file_list}",
-                parse_mode="Markdown"
-            )
-        except Exception as e:
-            bot.reply_to(message, f"❌ Ошибка при чтении папки: {e}")
+        files = sorted(os.listdir("research_stats"), reverse=True)[:5]
+        file_list = "\n".join([f"• {f}" for f in files])
+        bot.reply_to(message, 
+            f"❌ Укажи имя файла: `/get_stats имя_файла`\n\n"
+            f"Последние файлы:\n{file_list}",
+            parse_mode="Markdown"
+        )
         return
     
-    # Получаем имя файла из команды
     filename = parts[1]
     filepath = os.path.join("research_stats", filename)
     
-    # Проверяем, существует ли файл
     if not os.path.exists(filepath):
-        bot.reply_to(message, f"❌ Файл '{filename}' не найден в папке research_stats")
+        bot.reply_to(message, f"❌ Файл {filename} не найден")
         return
     
-    # Отправляем файл пользователю
-    try:
-        with open(filepath, 'rb') as f:
-            bot.send_document(
-                chat_id=message.chat.id,
-                document=f,
-                caption=f"📊 Файл статистики: {filename}"
-            )
-    except Exception as e:
-        bot.reply_to(message, f"❌ Ошибка при отправке файла: {e}")
+    with open(filepath, 'rb') as f:
+        bot.send_document(message.chat.id, f, caption=f"📊 {filename}")
 
-def fix_image_size(file_path, max_size=1024):
-    """
-    Проверяет и исправляет размер изображения для Telegram
-    Возвращает путь к исправленному файлу
-    """
-    try:
-        # Открываем изображение
-        img = Image.open(file_path)
-        width, height = img.size
-        
-        print(f"📸 Проверяю: {os.path.basename(file_path)} [{width}x{height}]")
-        
-        # Проверяем, нужно ли менять размер
-        needs_resize = False
-        new_width, new_height = width, height
-        
-        if width > max_size or height > max_size:
-            # Уменьшаем, сохраняя пропорции
-            if width > height:
-                new_width = max_size
-                new_height = int(height * (max_size / width))
-            else:
-                new_height = max_size
-                new_width = int(width * (max_size / height))
-            needs_resize = True
-            print(f"   📏 Слишком большое: {width}x{height} -> {new_width}x{new_height}")
-        
-        elif width < 200 or height < 200:
-            # Увеличиваем маленькие фото
-            if width < height:
-                new_width = 300
-                new_height = int(height * (300 / width))
-            else:
-                new_height = 300
-                new_width = int(width * (300 / height))
-            needs_resize = True
-            print(f"   📏 Слишком маленькое: {width}x{height} -> {new_width}x{new_height}")
-        
-        if needs_resize:
-            # Изменяем размер
-            img = img.resize((new_width, new_height), Image.LANCZOS)
-            
-            # Создаем временный файл
-            temp_path = file_path.replace('.', '_temp.')
-            img.save(temp_path, quality=85, optimize=True)
-            print(f"   ✅ Исправлено: {os.path.basename(temp_path)}")
-            return temp_path
-        
-        print(f"   ✅ Размер нормальный")
-        return file_path
-        
-    except Exception as e:
-        print(f"❌ Ошибка при обработке {file_path}: {e}")
-        return file_path
-
-@bot.message_handler(func=lambda msg: True)
-def all_other(message):
+# ===== ОБРАБОТЧИК НЕИЗВЕСТНЫХ КОМАНД =====
+@bot.message_handler(func=lambda message: message.text and message.text.startswith('/'))
+def unknown_command(message):
     bot.reply_to(
         message,
-        "👇 **Просто выбери кнопку!**",
+        "❓ Неизвестная команда. Используй /help",
         reply_markup=get_main_keyboard()
     )
-    
+
 # ========== ЗАПУСК ==========
 if __name__ == "__main__":
-    print("🚀 Запуск бота...")
+    print("="*60)
+    print("🚀 ЗАПУСК БОТА С ИССЛЕДОВАТЕЛЬСКОЙ СТАТИСТИКОЙ")
+    print("="*60)
+    
     init_db()
     load_images()
-    print("✅ Бот готов к работе!")
     
-    # Бесконечный цикл с авто-перезапуском при ошибках
-    while True:
-        try:
-            bot.infinity_polling(timeout=60, long_polling_timeout=60)
-        except Exception as e:
-            print(f"❌ Ошибка: {e}")
-            print("🔄 Перезапуск через 5 секунд...")
-            time.sleep(5)
+    print("\n✅ ИССЛЕДОВАТЕЛЬСКИЕ КОМАНДЫ:")
+    print("   • /research_stats - собрать полную статистику")
+    print("   • /list_stats - список файлов")
+    print("   • /get_stats - скачать файл")
+    print("="*60)
+    
+    bot.infinity_polling()
