@@ -7,6 +7,14 @@ import time
 from datetime import datetime, timedelta
 import threading
 import schedule
+import os
+import json
+import csv
+from datetime import datetime
+
+# Папка для исследовательской статистики
+STATS_DIR = "research_stats"
+os.makedirs(STATS_DIR, exist_ok=True)
 
 # ========== НАСТРОЙКИ ==========
 # Берём токен из переменных окружения Railway
@@ -46,7 +54,7 @@ def init_db():
     conn = sqlite3.connect('ai_detective.db')
     cursor = conn.cursor()
     
-    # Таблица пользователей
+    # Таблица пользователей (оставляем как есть)
     cursor.execute('''
     CREATE TABLE IF NOT EXISTS users (
         user_id INTEGER PRIMARY KEY,
@@ -65,7 +73,7 @@ def init_db():
     )
     ''')
     
-    # Таблица изображений
+    # Таблица изображений с категориями (НОВАЯ)
     cursor.execute('''
     CREATE TABLE IF NOT EXISTS images (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -73,6 +81,8 @@ def init_db():
         label TEXT,
         filename TEXT,
         category TEXT DEFAULT 'other',
+        subcategory TEXT DEFAULT '',
+        difficulty INTEGER DEFAULT 1,
         times_used INTEGER DEFAULT 0,
         correct_count INTEGER DEFAULT 0
     )
@@ -104,7 +114,7 @@ def init_db():
     
     conn.commit()
     conn.close()
-    print("✅ База данных создана")
+    print("✅ База данных обновлена")
 
 def load_images():
     conn = sqlite3.connect('ai_detective.db')
@@ -112,30 +122,76 @@ def load_images():
     
     cursor.execute("SELECT COUNT(*) FROM images")
     if cursor.fetchone()[0] == 0:
-        print("📸 Загружаем изображения...")
+        print("📸 Загружаем изображения с категориями...")
         
         # Реальные фото
         if os.path.exists("images/real"):
             for f in os.listdir("images/real"):
                 if f.lower().endswith(('.jpg', '.jpeg', '.png')):
                     path = os.path.join("images/real", f)
-                    cursor.execute("INSERT INTO images (file_path, label, filename) VALUES (?, ?, ?)",
-                                 (path, 'real', f))
+                    category = guess_category_from_filename(f)
+                    cursor.execute("""
+                        INSERT INTO images (file_path, label, filename, category) 
+                        VALUES (?, ?, ?, ?)
+                    """, (path, 'real', f, category))
+                    print(f"  + Добавлено реальное: {f} [{category}]")
         
         # ИИ-фото
         if os.path.exists("images/ai"):
             for f in os.listdir("images/ai"):
                 if f.lower().endswith(('.jpg', '.jpeg', '.png')):
                     path = os.path.join("images/ai", f)
-                    cursor.execute("INSERT INTO images (file_path, label, filename) VALUES (?, ?, ?)",
-                                 (path, 'ai', f))
+                    category = guess_category_from_filename(f)
+                    cursor.execute("""
+                        INSERT INTO images (file_path, label, filename, category) 
+                        VALUES (?, ?, ?, ?)
+                    """, (path, 'ai', f, category))
+                    print(f"  + Добавлено ИИ: {f} [{category}]")
         
         conn.commit()
         cursor.execute("SELECT COUNT(*) FROM images")
         total = cursor.fetchone()[0]
-        print(f"✅ Загружено {total} изображений")
+        print(f"✅ Загружено {total} изображений с категориями")
     
     conn.close()
+
+def save_stats_to_json(data, filename):
+    """Сохраняет данные в JSON файл"""
+    filepath = os.path.join(STATS_DIR, filename)
+    with open(filepath, 'w', encoding='utf-8') as f:
+        json.dump(data, f, ensure_ascii=False, indent=2)
+    print(f"✅ JSON сохранен: {filename}")
+
+def save_stats_to_csv(data, filename, headers):
+    """Сохраняет данные в CSV файл (для Excel)"""
+    filepath = os.path.join(STATS_DIR, filename)
+    with open(filepath, 'w', newline='', encoding='utf-8-sig') as f:
+        writer = csv.writer(f)
+        writer.writerow(headers)
+        writer.writerows(data)
+    print(f"✅ CSV сохранен: {filename}")
+
+def guess_category_from_filename(filename):
+    """Определяет категорию изображения по имени файла"""
+    filename = filename.lower()
+    
+    categories = {
+        'people': ['person', 'people', 'man', 'woman', 'child', 'girl', 'boy', 'portrait', 'face', 'human'],
+        'animals': ['cat', 'dog', 'animal', 'pet', 'bird', 'fish', 'horse', 'cow', 'pig', 'lion', 'tiger', 'bear'],
+        'nature': ['nature', 'landscape', 'mountain', 'forest', 'tree', 'flower', 'plant', 'sky', 'cloud', 'sunset', 'sunrise', 'beach', 'ocean', 'sea', 'river', 'lake'],
+        'urban': ['city', 'urban', 'building', 'street', 'road', 'house', 'architecture', 'town', 'village'],
+        'food': ['food', 'pizza', 'burger', 'cake', 'pasta', 'rice', 'soup', 'salad', 'fruit', 'vegetable', 'meal', 'drink', 'coffee', 'tea'],
+        'objects': ['object', 'item', 'thing', 'product', 'gadget', 'device', 'tool', 'furniture', 'chair', 'table', 'bed', 'car', 'vehicle'],
+        'art': ['art', 'painting', 'drawing', 'sketch', 'digital', 'abstract', 'cartoon', 'anime'],
+        'other': []
+    }
+    
+    for category, keywords in categories.items():
+        for keyword in keywords:
+            if keyword in filename:
+                return category
+    
+    return 'other'
 
 def get_random_image():
     conn = sqlite3.connect('ai_detective.db')
@@ -688,6 +744,234 @@ def all_other(message):
         "👇 **Просто выбери кнопку!**",
         reply_markup=get_main_keyboard()
     )
+
+# ========== ИССЛЕДОВАТЕЛЬСКАЯ СТАТИСТИКА ==========
+@bot.message_handler(commands=['research_stats'])
+def research_stats(message):
+    # 🔥 ЗАМЕНИ 123456789 НА СВОЙ TELEGRAM ID!
+    MY_ID = 1960661466
+    
+    # Проверяем, что команду вызвал ты
+    if message.from_user.id != MY_ID:
+        bot.reply_to(message, "⛔ Эта команда только для исследователя")
+        return
+    
+    bot.reply_to(message, "📊 **Собираю статистику...**", parse_mode="Markdown")
+    
+    conn = sqlite3.connect('ai_detective.db')
+    cursor = conn.cursor()
+    
+    # ===== 1. СТАТИСТИКА ПО ПОЛЬЗОВАТЕЛЯМ =====
+    cursor.execute("""
+        SELECT 
+            user_id,
+            username,
+            score,
+            games,
+            correct,
+            ROUND(100.0 * correct / games, 2) as accuracy,
+            streak,
+            max_streak
+        FROM users
+        WHERE games > 0
+        ORDER BY score DESC
+    """)
+    users_data = cursor.fetchall()
+    
+    save_stats_to_csv(users_data, f"users_{datetime.now().strftime('%Y%m%d_%H%M')}.csv",
+                     ["user_id", "username", "score", "games", "correct", "accuracy", "streak", "max_streak"])
+    
+    # ===== 2. СТАТИСТИКА ПО КАТЕГОРИЯМ =====
+    cursor.execute("""
+        SELECT 
+            i.category,
+            i.label,
+            COUNT(*) as attempts,
+            SUM(h.is_correct) as correct,
+            ROUND(100.0 * SUM(h.is_correct) / COUNT(*), 2) as accuracy,
+            ROUND(AVG(h.response_time), 2) as avg_time
+        FROM history h
+        JOIN images i ON h.image_id = i.id
+        GROUP BY i.category, i.label
+        ORDER BY i.category, accuracy DESC
+    """)
+    category_data = cursor.fetchall()
+    
+    save_stats_to_csv(category_data, f"categories_{datetime.now().strftime('%Y%m%d_%H%M')}.csv",
+                     ["category", "type", "attempts", "correct", "accuracy", "avg_time"])
+    
+    # ===== 3. ДИНАМИКА ПО ДНЯМ =====
+    cursor.execute("""
+        SELECT 
+            DATE(timestamp) as date,
+            COUNT(*) as games,
+            SUM(is_correct) as correct,
+            ROUND(100.0 * SUM(is_correct) / COUNT(*), 2) as accuracy
+        FROM history
+        GROUP BY DATE(timestamp)
+        ORDER BY date
+    """)
+    daily_data = cursor.fetchall()
+    
+    save_stats_to_csv(daily_data, f"daily_{datetime.now().strftime('%Y%m%d_%H%M')}.csv",
+                     ["date", "games", "correct", "accuracy"])
+    
+    # ===== 4. СРАВНЕНИЕ ИИ VS РЕАЛЬНЫЕ =====
+    cursor.execute("""
+        SELECT 
+            i.label,
+            COUNT(*) as total,
+            SUM(h.is_correct) as correct,
+            ROUND(100.0 * SUM(h.is_correct) / COUNT(*), 2) as accuracy
+        FROM history h
+        JOIN images i ON h.image_id = i.id
+        GROUP BY i.label
+    """)
+    comparison_data = cursor.fetchall()
+    
+    save_stats_to_csv(comparison_data, f"comparison_{datetime.now().strftime('%Y%m%d_%H%M')}.csv",
+                     ["type", "total", "correct", "accuracy"])
+    
+    # ===== 5. САМЫЕ СЛОЖНЫЕ ИЗОБРАЖЕНИЯ =====
+    cursor.execute("""
+        SELECT 
+            i.filename,
+            i.category,
+            i.label,
+            i.times_used,
+            i.times_used - i.correct_count as wrong,
+            ROUND(100.0 * (i.times_used - i.correct_count) / i.times_used, 2) as error_rate
+        FROM images i
+        WHERE i.times_used >= 5
+        ORDER BY error_rate DESC
+        LIMIT 20
+    """)
+    hardest_data = cursor.fetchall()
+    
+    save_stats_to_csv(hardest_data, f"hardest_{datetime.now().strftime('%Y%m%d_%H%M')}.csv",
+                     ["filename", "category", "type", "attempts", "wrong", "error_rate"])
+    
+    # ===== 6. САМЫЕ ЛЕГКИЕ ИЗОБРАЖЕНИЯ =====
+    cursor.execute("""
+        SELECT 
+            i.filename,
+            i.category,
+            i.label,
+            i.times_used,
+            i.correct_count,
+            ROUND(100.0 * i.correct_count / i.times_used, 2) as accuracy
+        FROM images i
+        WHERE i.times_used >= 5
+        ORDER BY accuracy DESC
+        LIMIT 20
+    """)
+    easiest_data = cursor.fetchall()
+    
+    save_stats_to_csv(easiest_data, f"easiest_{datetime.now().strftime('%Y%m%d_%H%M')}.csv",
+                     ["filename", "category", "type", "attempts", "correct", "accuracy"])
+    
+    conn.close()
+    
+    # Сохраняем общую статистику в JSON
+    total_users = len(users_data)
+    total_games = sum(u[3] for u in users_data) if users_data else 0
+    total_correct = sum(u[4] for u in users_data) if users_data else 0
+    avg_accuracy = round((total_correct / total_games * 100), 2) if total_games > 0 else 0
+    
+    full_stats = {
+        "date": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+        "total_users": total_users,
+        "total_games": total_games,
+        "total_correct": total_correct,
+        "avg_accuracy": avg_accuracy,
+        "categories": {}
+    }
+    
+    for cat in set([c[0] for c in category_data]):
+        cat_stats = [c for c in category_data if c[0] == cat]
+        full_stats["categories"][cat] = {
+            "attempts": sum(c[2] for c in cat_stats),
+            "avg_accuracy": round(sum(c[4] for c in cat_stats) / len(cat_stats), 2)
+        }
+    
+    save_stats_to_json(full_stats, f"full_stats_{datetime.now().strftime('%Y%m%d_%H%M')}.json")
+    
+    # Отправляем подтверждение
+    bot.reply_to(message, 
+        f"✅ **Статистика собрана!**\n\n"
+        f"📁 Файлы сохранены в папке `{STATS_DIR}`:\n"
+        f"• users_*.csv - данные пользователей\n"
+        f"• categories_*.csv - статистика по категориям\n"
+        f"• daily_*.csv - активность по дням\n"
+        f"• hardest_*.csv - самые сложные фото\n"
+        f"• easiest_*.csv - самые легкие фото\n\n"
+        f"📊 Всего пользователей: {total_users}\n"
+        f"🎮 Всего игр: {total_games}\n"
+        f"📈 Средняя точность: {avg_accuracy}%",
+        parse_mode="Markdown"
+    )
+
+@bot.message_handler(commands=['list_stats'])
+def list_stats(message):
+    MY_ID = 1960661466  # 🔥 ТВОЙ ID
+    if message.from_user.id != MY_ID:
+        bot.reply_to(message, "⛔ Нет доступа")
+        return
+    
+    files = os.listdir(STATS_DIR)
+    if not files:
+        bot.reply_to(message, "📭 Папка статистики пуста")
+        return
+    
+    # Сортируем от новых к старым
+    files.sort(reverse=True)
+    
+    text = "📁 **Файлы статистики:**\n\n"
+    for f in files[:15]:  # показываем последние 15
+        size = os.path.getsize(os.path.join(STATS_DIR, f))
+        if size < 1024:
+            size_str = f"{size} B"
+        elif size < 1024*1024:
+            size_str = f"{size/1024:.1f} KB"
+        else:
+            size_str = f"{size/1024/1024:.1f} MB"
+        
+        text += f"• {f} ({size_str})\n"
+    
+    bot.reply_to(message, text, parse_mode="Markdown")
+
+@bot.message_handler(commands=['get_stats'])
+def get_stats(message):
+    MY_ID = 1960661466  # 🔥 ТВОЙ ID
+    if message.from_user.id != MY_ID:
+        bot.reply_to(message, "⛔ Нет доступа")
+        return
+    
+    try:
+        parts = message.text.split()
+        if len(parts) < 2:
+            # Показываем последние 5 файлов
+            files = sorted(os.listdir(STATS_DIR), reverse=True)[:5]
+            file_list = "\n".join([f"• {f}" for f in files])
+            bot.reply_to(message, 
+                f"❌ Укажи имя файла: `/get_stats имя_файла.csv`\n\n"
+                f"Последние файлы:\n{file_list}",
+                parse_mode="Markdown"
+            )
+            return
+        
+        filename = parts[1]
+        filepath = os.path.join(STATS_DIR, filename)
+        
+        if not os.path.exists(filepath):
+            bot.reply_to(message, f"❌ Файл {filename} не найден")
+            return
+        
+        with open(filepath, 'rb') as f:
+            bot.send_document(message.chat.id, f, caption=f"📊 {filename}")
+            
+    except Exception as e:
+        bot.reply_to(message, f"❌ Ошибка: {e}")
 
 # ========== ЗАПУСК ==========
 if __name__ == "__main__":
