@@ -684,92 +684,47 @@ def research_stats(message):
         
         # Сохраняем общую статистику
         with open(f"research_stats/summary_{timestamp}.txt", 'w', encoding='utf-8') as f:
-            f.write("========== ИССЛЕДОВАТЕЛЬСКАЯ СТАТИСТИКА ==========\n")
-            f.write(f"Дата сбора: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}\n\n")
-            f.write(f"ОБЩИЕ ДАННЫЕ:\n")
-            f.write(f"  Всего пользователей: {total_users}\n")
-            f.write(f"  Активных игроков: {active_users}\n")
-            f.write(f"  Всего игр: {total_games}\n")
-            f.write(f"  Правильных ответов: {total_correct}\n")
-            f.write(f"  Средняя точность: {avg_accuracy}%\n\n")
-            
-            f.write("СРАВНЕНИЕ ИИ VS РЕАЛЬНЫЕ:\n")
-            for label, total, correct, acc in comparison_data:
-                emoji = "🤖" if label == 'ai' else "📸"
-                f.write(f"  {emoji} {label.upper()}: {acc}% ({correct}/{total})\n")
-            f.write("\n")
-            
-            f.write("КАТЕГОРИИ (от худшей к лучшей):\n")
-            for cat, attempts, correct, acc in category_summary:
-                f.write(f"  {cat}: {acc}% ({correct}/{attempts})\n")
+            f.write(f"Дата сбора: {datetime.now()}\n")
+            f.write(f"Всего пользователей: {total_users}\n")
+            f.write(f"Активных: {active_users}\n")
+            f.write(f"Всего игр: {total_games}\n")
+            f.write(f"Правильных ответов: {total_correct}\n")
+            f.write(f"Средняя точность: {avg_accuracy}%\n")
         
-        # Сохраняем JSON со всеми данными
+        # Сохраняем JSON
         full_stats = {
-            "date": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+            "date": str(datetime.now()),
             "total_users": total_users,
             "active_users": active_users,
             "total_games": total_games,
             "total_correct": total_correct,
-            "avg_accuracy": avg_accuracy,
-            "categories": {},
-            "comparison": {},
-            "hardest": [],
-            "easiest": []
+            "avg_accuracy": avg_accuracy
         }
         
-        for cat, attempts, correct, acc in category_summary:
-            full_stats["categories"][cat] = {
-                "attempts": attempts,
-                "accuracy": acc
-            }
-        
-        for label, total, correct, acc in comparison_data:
-            full_stats["comparison"][label] = {
-                "attempts": total,
-                "accuracy": acc
-            }
-        
-        for img, cat, lbl, attempts, wrong, err in hardest_data:
-            full_stats["hardest"].append({
-                "filename": img,
-                "category": cat,
-                "type": lbl,
-                "attempts": attempts,
-                "error_rate": err
-            })
-        
-        for img, cat, lbl, attempts, correct, acc in easiest_data:
-            full_stats["easiest"].append({
-                "filename": img,
-                "category": cat,
-                "type": lbl,
-                "attempts": attempts,
-                "accuracy": acc
-            })
-        
         with open(f"research_stats/full_stats_{timestamp}.json", 'w', encoding='utf-8') as f:
-            json.dump(full_stats, f, ensure_ascii=False, indent=2)
+            json.dump(full_stats, f, indent=2)
         
         # Отправляем результат
-result_text = (
-    f"✅ ПОЛНАЯ СТАТИСТИКА СОБРАНА!\n\n"
-    f"📁 Создано файлов:\n"
-    f"• users_{timestamp}.csv - {len(users_data)} пользователей\n"
-    f"• categories_{timestamp}.csv - данные по категориям\n"
-    f"• daily_{timestamp}.csv - активность по дням\n"
-    f"• hardest_{timestamp}.csv - топ-20 сложных фото\n"
-    f"• easiest_{timestamp}.csv - топ-20 легких фото\n"
-    f"• comparison_{timestamp}.csv - ИИ vs Реальные\n"
-    f"• summary_{timestamp}.txt - общая статистика\n"
-    f"• full_stats_{timestamp}.json - все данные в JSON\n\n"
-    f"📊 Ключевые показатели:\n"
-    f"• Всего игроков: {total_users}\n"
-    f"• Сыграно игр: {total_games}\n"
-    f"• Общая точность: {avg_accuracy}%\n\n"
-    f"📥 Используй /list_stats и /get_stats для скачивания"
-)
-
-bot.send_message(message.chat.id, result_text)
+        result_text = (
+            f"✅ ПОЛНАЯ СТАТИСТИКА СОБРАНА!\n\n"
+            f"📁 Создано файлов:\n"
+            f"• users_{timestamp}.csv\n"
+            f"• categories_{timestamp}.csv\n"
+            f"• daily_{timestamp}.csv\n"
+            f"• hardest_{timestamp}.csv\n"
+            f"• easiest_{timestamp}.csv\n"
+            f"• comparison_{timestamp}.csv\n"
+            f"• summary_{timestamp}.txt\n"
+            f"• full_stats_{timestamp}.json\n\n"
+            f"📊 Всего игр: {total_games}\n"
+            f"📈 Точность: {avg_accuracy}%\n\n"
+            f"Используй /list_stats и /get_stats"
+        )
+        
+        bot.send_message(message.chat.id, result_text)
+        
+    except Exception as e:
+        bot.send_message(message.chat.id, f"❌ Ошибка: {str(e)}")
 
 @bot.message_handler(commands=['list_stats'])
 def list_stats(message):
