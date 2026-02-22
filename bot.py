@@ -1116,6 +1116,62 @@ def list_stats(message):
     except Exception as e:
         bot.send_message(message.chat.id, f"❌ Ошибка: {e}")
 
+# ========== ПОЛУЧЕНИЕ ФАЙЛОВ СТАТИСТИКИ ==========
+@bot.message_handler(commands=['get_stats'])
+def get_stats(message):
+    # 🔥 ТВОЙ TELEGRAM ID
+    MY_ID = 1960661466
+    
+    # Проверка доступа (только для тебя)
+    if message.from_user.id != MY_ID:
+        bot.reply_to(message, "⛔ Нет доступа к этой команде")
+        return
+    
+    # Разбираем команду: /get_stats filename.csv
+    parts = message.text.split()
+    
+    # Если пользователь не указал имя файла
+    if len(parts) < 2:
+        # Показываем список последних файлов
+        try:
+            files = os.listdir("research_stats")
+            files.sort(reverse=True)  # новые сверху
+            recent_files = files[:5]  # последние 5
+            
+            if not recent_files:
+                bot.reply_to(message, "📭 Папка статистики пуста. Сначала выполни /research_stats")
+                return
+            
+            file_list = "\n".join([f"• {f}" for f in recent_files])
+            bot.reply_to(message, 
+                f"❌ Укажи имя файла: `/get_stats имя_файла`\n\n"
+                f"Последние файлы:\n{file_list}",
+                parse_mode="Markdown"
+            )
+        except Exception as e:
+            bot.reply_to(message, f"❌ Ошибка при чтении папки: {e}")
+        return
+    
+    # Получаем имя файла из команды
+    filename = parts[1]
+    filepath = os.path.join("research_stats", filename)
+    
+    # Проверяем, существует ли файл
+    if not os.path.exists(filepath):
+        bot.reply_to(message, f"❌ Файл '{filename}' не найден в папке research_stats")
+        return
+    
+    # Отправляем файл пользователю
+    try:
+        with open(filepath, 'rb') as f:
+            bot.send_document(
+                chat_id=message.chat.id,
+                document=f,
+                caption=f"📊 Файл статистики: {filename}"
+            )
+    except Exception as e:
+        bot.reply_to(message, f"❌ Ошибка при отправке файла: {e}")
+
 @bot.message_handler(func=lambda msg: True)
 def all_other(message):
     bot.reply_to(
