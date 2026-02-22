@@ -117,6 +117,7 @@ def init_db():
     print("✅ База данных обновлена")
 
 def load_images():
+    """Загружает изображения из папок с категориями"""
     conn = sqlite3.connect('ai_detective.db')
     cursor = conn.cursor()
     
@@ -124,34 +125,36 @@ def load_images():
     if cursor.fetchone()[0] == 0:
         print("📸 Загружаем изображения с категориями...")
         
-        # Реальные фото
-        if os.path.exists("images/real"):
-            for f in os.listdir("images/real"):
-                if f.lower().endswith(('.jpg', '.jpeg', '.png')):
-                    path = os.path.join("images/real", f)
-                    category = guess_category_from_filename(f)
-                    cursor.execute("""
-                        INSERT INTO images (file_path, label, filename, category) 
-                        VALUES (?, ?, ?, ?)
-                    """, (path, 'real', f, category))
-                    print(f"  + Добавлено реальное: {f} [{category}]")
-        
-        # ИИ-фото
-        if os.path.exists("images/ai"):
-            for f in os.listdir("images/ai"):
-                if f.lower().endswith(('.jpg', '.jpeg', '.png')):
-                    path = os.path.join("images/ai", f)
-                    category = guess_category_from_filename(f)
-                    cursor.execute("""
-                        INSERT INTO images (file_path, label, filename, category) 
-                        VALUES (?, ?, ?, ?)
-                    """, (path, 'ai', f, category))
-                    print(f"  + Добавлено ИИ: {f} [{category}]")
+        # Проходим по всем папкам
+        for label in ['real', 'ai']:
+            base_path = f"images/{label}"
+            if os.path.exists(base_path):
+                # Проходим по всем подпапкам (категориям)
+                for category in os.listdir(base_path):
+                    category_path = os.path.join(base_path, category)
+                    if os.path.isdir(category_path):
+                        # Проходим по файлам в папке категории
+                        for f in os.listdir(category_path):
+                            if f.lower().endswith(('.jpg', '.jpeg', '.png')):
+                                file_path = os.path.join(category_path, f)
+                                cursor.execute("""
+                                    INSERT INTO images 
+                                    (file_path, label, filename, category) 
+                                    VALUES (?, ?, ?, ?)
+                                """, (file_path, label, f, category))
+                                print(f"  + {label}/{category}: {f}")
         
         conn.commit()
         cursor.execute("SELECT COUNT(*) FROM images")
         total = cursor.fetchone()[0]
-        print(f"✅ Загружено {total} изображений с категориями")
+        
+        # Показываем статистику по категориям
+        cursor.execute("SELECT category, label, COUNT(*) FROM images GROUP BY category, label")
+        stats = cursor.fetchall()
+        print(f"\n✅ Загружено {total} изображений:")
+        for cat, lbl, cnt in stats:
+            emoji = "📸" if lbl == 'real' else "🤖"
+            print(f"  {emoji} {cat}: {cnt}")
     
     conn.close()
 
