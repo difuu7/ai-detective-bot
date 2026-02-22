@@ -13,62 +13,6 @@ import csv
 from datetime import datetime
 from PIL import Image
 import io
-import os
-
-def fix_image_size(file_path, max_size=1024):
-    """
-    Проверяет и исправляет размер изображения для Telegram
-    Возвращает путь к исправленному файлу
-    """
-    try:
-        # Открываем изображение
-        img = Image.open(file_path)
-        width, height = img.size
-        
-        print(f"📸 Проверяю: {os.path.basename(file_path)} [{width}x{height}]")
-        
-        # Проверяем, нужно ли менять размер
-        needs_resize = False
-        new_width, new_height = width, height
-        
-        if width > max_size or height > max_size:
-            # Уменьшаем, сохраняя пропорции
-            if width > height:
-                new_width = max_size
-                new_height = int(height * (max_size / width))
-            else:
-                new_height = max_size
-                new_width = int(width * (max_size / height))
-            needs_resize = True
-            print(f"   📏 Слишком большое: {width}x{height} -> {new_width}x{new_height}")
-        
-        elif width < 200 or height < 200:
-            # Увеличиваем маленькие фото
-            if width < height:
-                new_width = 300
-                new_height = int(height * (300 / width))
-            else:
-                new_height = 300
-                new_width = int(width * (300 / height))
-            needs_resize = True
-            print(f"   📏 Слишком маленькое: {width}x{height} -> {new_width}x{new_height}")
-        
-        if needs_resize:
-            # Изменяем размер
-            img = img.resize((new_width, new_height), Image.LANCZOS)
-            
-            # Создаем временный файл
-            temp_path = file_path.replace('.', '_temp.')
-            img.save(temp_path, quality=85, optimize=True)
-            print(f"   ✅ Исправлено: {os.path.basename(temp_path)}")
-            return temp_path
-        
-        print(f"   ✅ Размер нормальный")
-        return file_path
-        
-    except Exception as e:
-        print(f"❌ Ошибка при обработке {file_path}: {e}")
-        return file_path
 
 # Папка для исследовательской статистики
 STATS_DIR = "research_stats"
@@ -1236,6 +1180,61 @@ def get_stats(message):
             )
     except Exception as e:
         bot.reply_to(message, f"❌ Ошибка при отправке файла: {e}")
+
+def fix_image_size(file_path, max_size=1024):
+    """
+    Проверяет и исправляет размер изображения для Telegram
+    Возвращает путь к исправленному файлу
+    """
+    try:
+        # Открываем изображение
+        img = Image.open(file_path)
+        width, height = img.size
+        
+        print(f"📸 Проверяю: {os.path.basename(file_path)} [{width}x{height}]")
+        
+        # Проверяем, нужно ли менять размер
+        needs_resize = False
+        new_width, new_height = width, height
+        
+        if width > max_size or height > max_size:
+            # Уменьшаем, сохраняя пропорции
+            if width > height:
+                new_width = max_size
+                new_height = int(height * (max_size / width))
+            else:
+                new_height = max_size
+                new_width = int(width * (max_size / height))
+            needs_resize = True
+            print(f"   📏 Слишком большое: {width}x{height} -> {new_width}x{new_height}")
+        
+        elif width < 200 or height < 200:
+            # Увеличиваем маленькие фото
+            if width < height:
+                new_width = 300
+                new_height = int(height * (300 / width))
+            else:
+                new_height = 300
+                new_width = int(width * (300 / height))
+            needs_resize = True
+            print(f"   📏 Слишком маленькое: {width}x{height} -> {new_width}x{new_height}")
+        
+        if needs_resize:
+            # Изменяем размер
+            img = img.resize((new_width, new_height), Image.LANCZOS)
+            
+            # Создаем временный файл
+            temp_path = file_path.replace('.', '_temp.')
+            img.save(temp_path, quality=85, optimize=True)
+            print(f"   ✅ Исправлено: {os.path.basename(temp_path)}")
+            return temp_path
+        
+        print(f"   ✅ Размер нормальный")
+        return file_path
+        
+    except Exception as e:
+        print(f"❌ Ошибка при обработке {file_path}: {e}")
+        return file_path
 
 @bot.message_handler(func=lambda msg: True)
 def all_other(message):
