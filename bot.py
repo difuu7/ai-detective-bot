@@ -1076,7 +1076,7 @@ def research_stats(message):
         
         report += f"📥 **Скачай файлы командой:** `/get_stats имя_файла`"
         
-        bot.send_message(message.chat.id, report, parse_mode="Markdown")
+        bot.send_message(message.chat.id, report,)
         
     except Exception as e:
         bot.send_message(message.chat.id, f"❌ Ошибка при сборе статистики: {e}")
@@ -1085,7 +1085,7 @@ def research_stats(message):
 
 @bot.message_handler(commands=['list_stats'])
 def list_stats(message):
-    MY_ID = 123456789  # 🔥 ТВОЙ ID
+    MY_ID = 1960661466  # 🔥 ТВОЙ ID
     if message.from_user.id != MY_ID:
         bot.reply_to(message, "⛔ Нет доступа")
         return
