@@ -741,7 +741,7 @@ def help_message(message):
 @bot.message_handler(commands=['research_stats'])
 def research_stats(message):
     # 🔥 ЗАМЕНИ 123456789 НА СВОЙ TELEGRAM ID!
-    MY_ID = 123456789
+    MY_ID = 1960661466
     
     # Проверяем, что команду вызвал ты
     if message.from_user.id != MY_ID:
