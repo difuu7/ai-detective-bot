@@ -745,233 +745,384 @@ def all_other(message):
         reply_markup=get_main_keyboard()
     )
 
-# ========== ИССЛЕДОВАТЕЛЬСКАЯ СТАТИСТИКА ==========
+# ========== ПОЛНАЯ ИССЛЕДОВАТЕЛЬСКАЯ СТАТИСТИКА ==========
 @bot.message_handler(commands=['research_stats'])
 def research_stats(message):
     # 🔥 ЗАМЕНИ 123456789 НА СВОЙ TELEGRAM ID!
-    MY_ID = 1960661466
+    MY_ID = 123456789
     
     # Проверяем, что команду вызвал ты
     if message.from_user.id != MY_ID:
         bot.reply_to(message, "⛔ Эта команда только для исследователя")
         return
     
-    bot.reply_to(message, "📊 **Собираю статистику...**", parse_mode="Markdown")
+    bot.send_message(message.chat.id, "📊 **Начинаю сбор полной статистики...**", parse_mode="Markdown")
     
-    conn = sqlite3.connect('ai_detective.db')
-    cursor = conn.cursor()
-    
-    # ===== 1. СТАТИСТИКА ПО ПОЛЬЗОВАТЕЛЯМ =====
-    cursor.execute("""
-        SELECT 
-            user_id,
-            username,
-            score,
-            games,
-            correct,
-            ROUND(100.0 * correct / games, 2) as accuracy,
-            streak,
-            max_streak
-        FROM users
-        WHERE games > 0
-        ORDER BY score DESC
-    """)
-    users_data = cursor.fetchall()
-    
-    save_stats_to_csv(users_data, f"users_{datetime.now().strftime('%Y%m%d_%H%M')}.csv",
-                     ["user_id", "username", "score", "games", "correct", "accuracy", "streak", "max_streak"])
-    
-    # ===== 2. СТАТИСТИКА ПО КАТЕГОРИЯМ =====
-    cursor.execute("""
-        SELECT 
-            i.category,
-            i.label,
-            COUNT(*) as attempts,
-            SUM(h.is_correct) as correct,
-            ROUND(100.0 * SUM(h.is_correct) / COUNT(*), 2) as accuracy,
-            ROUND(AVG(h.response_time), 2) as avg_time
-        FROM history h
-        JOIN images i ON h.image_id = i.id
-        GROUP BY i.category, i.label
-        ORDER BY i.category, accuracy DESC
-    """)
-    category_data = cursor.fetchall()
-    
-    save_stats_to_csv(category_data, f"categories_{datetime.now().strftime('%Y%m%d_%H%M')}.csv",
-                     ["category", "type", "attempts", "correct", "accuracy", "avg_time"])
-    
-    # ===== 3. ДИНАМИКА ПО ДНЯМ =====
-    cursor.execute("""
-        SELECT 
-            DATE(timestamp) as date,
-            COUNT(*) as games,
-            SUM(is_correct) as correct,
-            ROUND(100.0 * SUM(is_correct) / COUNT(*), 2) as accuracy
-        FROM history
-        GROUP BY DATE(timestamp)
-        ORDER BY date
-    """)
-    daily_data = cursor.fetchall()
-    
-    save_stats_to_csv(daily_data, f"daily_{datetime.now().strftime('%Y%m%d_%H%M')}.csv",
-                     ["date", "games", "correct", "accuracy"])
-    
-    # ===== 4. СРАВНЕНИЕ ИИ VS РЕАЛЬНЫЕ =====
-    cursor.execute("""
-        SELECT 
-            i.label,
-            COUNT(*) as total,
-            SUM(h.is_correct) as correct,
-            ROUND(100.0 * SUM(h.is_correct) / COUNT(*), 2) as accuracy
-        FROM history h
-        JOIN images i ON h.image_id = i.id
-        GROUP BY i.label
-    """)
-    comparison_data = cursor.fetchall()
-    
-    save_stats_to_csv(comparison_data, f"comparison_{datetime.now().strftime('%Y%m%d_%H%M')}.csv",
-                     ["type", "total", "correct", "accuracy"])
-    
-    # ===== 5. САМЫЕ СЛОЖНЫЕ ИЗОБРАЖЕНИЯ =====
-    cursor.execute("""
-        SELECT 
-            i.filename,
-            i.category,
-            i.label,
-            i.times_used,
-            i.times_used - i.correct_count as wrong,
-            ROUND(100.0 * (i.times_used - i.correct_count) / i.times_used, 2) as error_rate
-        FROM images i
-        WHERE i.times_used >= 5
-        ORDER BY error_rate DESC
-        LIMIT 20
-    """)
-    hardest_data = cursor.fetchall()
-    
-    save_stats_to_csv(hardest_data, f"hardest_{datetime.now().strftime('%Y%m%d_%H%M')}.csv",
-                     ["filename", "category", "type", "attempts", "wrong", "error_rate"])
-    
-    # ===== 6. САМЫЕ ЛЕГКИЕ ИЗОБРАЖЕНИЯ =====
-    cursor.execute("""
-        SELECT 
-            i.filename,
-            i.category,
-            i.label,
-            i.times_used,
-            i.correct_count,
-            ROUND(100.0 * i.correct_count / i.times_used, 2) as accuracy
-        FROM images i
-        WHERE i.times_used >= 5
-        ORDER BY accuracy DESC
-        LIMIT 20
-    """)
-    easiest_data = cursor.fetchall()
-    
-    save_stats_to_csv(easiest_data, f"easiest_{datetime.now().strftime('%Y%m%d_%H%M')}.csv",
-                     ["filename", "category", "type", "attempts", "correct", "accuracy"])
-    
-    conn.close()
-    
-    # Сохраняем общую статистику в JSON
-    total_users = len(users_data)
-    total_games = sum(u[3] for u in users_data) if users_data else 0
-    total_correct = sum(u[4] for u in users_data) if users_data else 0
-    avg_accuracy = round((total_correct / total_games * 100), 2) if total_games > 0 else 0
-    
-    full_stats = {
-        "date": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
-        "total_users": total_users,
-        "total_games": total_games,
-        "total_correct": total_correct,
-        "avg_accuracy": avg_accuracy,
-        "categories": {}
-    }
-    
-    for cat in set([c[0] for c in category_data]):
-        cat_stats = [c for c in category_data if c[0] == cat]
-        full_stats["categories"][cat] = {
-            "attempts": sum(c[2] for c in cat_stats),
-            "avg_accuracy": round(sum(c[4] for c in cat_stats) / len(cat_stats), 2)
+    try:
+        conn = sqlite3.connect('ai_detective.db')
+        cursor = conn.cursor()
+        
+        # Создаем папку для статистики
+        os.makedirs("research_stats", exist_ok=True)
+        timestamp = datetime.now().strftime('%Y%m%d_%H%M')
+        
+        # ===== 1. СТАТИСТИКА ПО ПОЛЬЗОВАТЕЛЯМ =====
+        cursor.execute("""
+            SELECT 
+                user_id,
+                username,
+                score,
+                games,
+                correct,
+                ROUND(100.0 * correct / games, 2) as accuracy,
+                streak,
+                max_streak,
+                ai_correct,
+                real_correct,
+                contributed
+            FROM users
+            WHERE games > 0
+            ORDER BY score DESC
+        """)
+        users_data = cursor.fetchall()
+        
+        with open(f"research_stats/users_{timestamp}.csv", 'w', newline='', encoding='utf-8-sig') as f:
+            writer = csv.writer(f)
+            writer.writerow(["user_id", "username", "score", "games", "correct", "accuracy", 
+                           "streak", "max_streak", "ai_correct", "real_correct", "contributed"])
+            writer.writerows(users_data)
+        
+        # ===== 2. СТАТИСТИКА ПО КАТЕГОРИЯМ (ПОЛНАЯ) =====
+        cursor.execute("""
+            SELECT 
+                i.category,
+                i.label,
+                COUNT(*) as attempts,
+                SUM(h.is_correct) as correct,
+                ROUND(100.0 * SUM(h.is_correct) / COUNT(*), 2) as accuracy,
+                ROUND(AVG(h.response_time), 2) as avg_time,
+                MIN(h.response_time) as min_time,
+                MAX(h.response_time) as max_time
+            FROM history h
+            JOIN images i ON h.image_id = i.id
+            GROUP BY i.category, i.label
+            ORDER BY i.category, accuracy
+        """)
+        category_data = cursor.fetchall()
+        
+        with open(f"research_stats/categories_{timestamp}.csv", 'w', newline='', encoding='utf-8-sig') as f:
+            writer = csv.writer(f)
+            writer.writerow(["category", "type", "attempts", "correct", "accuracy", 
+                           "avg_time", "min_time", "max_time"])
+            writer.writerows(category_data)
+        
+        # ===== 3. СВОДНАЯ ПО КАТЕГОРИЯМ =====
+        cursor.execute("""
+            SELECT 
+                i.category,
+                COUNT(*) as total_attempts,
+                SUM(h.is_correct) as total_correct,
+                ROUND(100.0 * SUM(h.is_correct) / COUNT(*), 2) as accuracy,
+                ROUND(AVG(h.response_time), 2) as avg_time
+            FROM history h
+            JOIN images i ON h.image_id = i.id
+            GROUP BY i.category
+            ORDER BY accuracy
+        """)
+        category_summary = cursor.fetchall()
+        
+        # ===== 4. ДИНАМИКА ПО ДНЯМ =====
+        cursor.execute("""
+            SELECT 
+                DATE(timestamp) as date,
+                COUNT(*) as games,
+                SUM(is_correct) as correct,
+                ROUND(100.0 * SUM(is_correct) / COUNT(*), 2) as accuracy,
+                ROUND(AVG(response_time), 2) as avg_time
+            FROM history
+            GROUP BY DATE(timestamp)
+            ORDER BY date DESC
+            LIMIT 30
+        """)
+        daily_data = cursor.fetchall()
+        
+        with open(f"research_stats/daily_{timestamp}.csv", 'w', newline='', encoding='utf-8-sig') as f:
+            writer = csv.writer(f)
+            writer.writerow(["date", "games", "correct", "accuracy", "avg_time"])
+            writer.writerows(daily_data)
+        
+        # ===== 5. СРАВНЕНИЕ ИИ VS РЕАЛЬНЫЕ =====
+        cursor.execute("""
+            SELECT 
+                i.label,
+                COUNT(*) as total,
+                SUM(h.is_correct) as correct,
+                ROUND(100.0 * SUM(h.is_correct) / COUNT(*), 2) as accuracy,
+                ROUND(AVG(h.response_time), 2) as avg_time
+            FROM history h
+            JOIN images i ON h.image_id = i.id
+            GROUP BY i.label
+        """)
+        comparison_data = cursor.fetchall()
+        
+        with open(f"research_stats/comparison_{timestamp}.csv", 'w', newline='', encoding='utf-8-sig') as f:
+            writer = csv.writer(f)
+            writer.writerow(["type", "total", "correct", "accuracy", "avg_time"])
+            writer.writerows(comparison_data)
+        
+        # ===== 6. САМЫЕ СЛОЖНЫЕ ИЗОБРАЖЕНИЯ (ТОП-20) =====
+        cursor.execute("""
+            SELECT 
+                i.filename,
+                i.category,
+                i.label,
+                i.times_used,
+                i.correct_count,
+                i.times_used - i.correct_count as wrong,
+                ROUND(100.0 * (i.times_used - i.correct_count) / i.times_used, 2) as error_rate
+            FROM images i
+            WHERE i.times_used >= 5
+            ORDER BY error_rate DESC
+            LIMIT 20
+        """)
+        hardest_data = cursor.fetchall()
+        
+        with open(f"research_stats/hardest_{timestamp}.csv", 'w', newline='', encoding='utf-8-sig') as f:
+            writer = csv.writer(f)
+            writer.writerow(["filename", "category", "type", "attempts", "correct", "wrong", "error_rate"])
+            writer.writerows(hardest_data)
+        
+        # ===== 7. САМЫЕ ЛЕГКИЕ ИЗОБРАЖЕНИЯ (ТОП-20) =====
+        cursor.execute("""
+            SELECT 
+                i.filename,
+                i.category,
+                i.label,
+                i.times_used,
+                i.correct_count,
+                ROUND(100.0 * i.correct_count / i.times_used, 2) as accuracy
+            FROM images i
+            WHERE i.times_used >= 5
+            ORDER BY accuracy DESC
+            LIMIT 20
+        """)
+        easiest_data = cursor.fetchall()
+        
+        with open(f"research_stats/easiest_{timestamp}.csv", 'w', newline='', encoding='utf-8-sig') as f:
+            writer = csv.writer(f)
+            writer.writerow(["filename", "category", "type", "attempts", "correct", "accuracy"])
+            writer.writerows(easiest_data)
+        
+        # ===== 8. СТАТИСТИКА ПО ВРЕМЕНИ ОТВЕТА =====
+        cursor.execute("""
+            SELECT 
+                CASE 
+                    WHEN response_time < 3 THEN 'быстро (<3 сек)'
+                    WHEN response_time BETWEEN 3 AND 7 THEN 'средне (3-7 сек)'
+                    ELSE 'медленно (>7 сек)'
+                END as speed,
+                COUNT(*) as count,
+                SUM(is_correct) as correct,
+                ROUND(100.0 * SUM(is_correct) / COUNT(*), 2) as accuracy
+            FROM history
+            GROUP BY speed
+        """)
+        speed_data = cursor.fetchall()
+        
+        with open(f"research_stats/speed_{timestamp}.csv", 'w', newline='', encoding='utf-8-sig') as f:
+            writer = csv.writer(f)
+            writer.writerow(["speed", "count", "correct", "accuracy"])
+            writer.writerows(speed_data)
+        
+        # ===== 9. ОБЩАЯ СТАТИСТИКА =====
+        cursor.execute("SELECT COUNT(*) FROM users")
+        total_users = cursor.fetchone()[0]
+        
+        cursor.execute("SELECT COUNT(*) FROM users WHERE games > 0")
+        active_users = cursor.fetchone()[0]
+        
+        cursor.execute("SELECT COUNT(*) FROM history")
+        total_games = cursor.fetchone()[0]
+        
+        cursor.execute("SELECT SUM(is_correct) FROM history")
+        total_correct = cursor.fetchone()[0] or 0
+        
+        cursor.execute("SELECT AVG(response_time) FROM history")
+        avg_response = cursor.fetchone()[0] or 0
+        
+        cursor.execute("SELECT COUNT(*) FROM images WHERE label='real'")
+        real_images = cursor.fetchone()[0]
+        
+        cursor.execute("SELECT COUNT(*) FROM images WHERE label='ai'")
+        ai_images = cursor.fetchone()[0]
+        
+        conn.close()
+        
+        avg_accuracy = round((total_correct / total_games) * 100, 2) if total_games > 0 else 0
+        
+        # Сохраняем общую статистику
+        with open(f"research_stats/summary_{timestamp}.txt", 'w', encoding='utf-8') as f:
+            f.write("========== ОБЩАЯ СТАТИСТИКА ==========\n")
+            f.write(f"Дата сбора: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}\n\n")
+            f.write(f"Пользователи:\n")
+            f.write(f"  Всего: {total_users}\n")
+            f.write(f"  Активных: {active_users}\n")
+            f.write(f"  Неактивных: {total_users - active_users}\n\n")
+            f.write(f"Игры:\n")
+            f.write(f"  Всего игр: {total_games}\n")
+            f.write(f"  Правильных ответов: {total_correct}\n")
+            f.write(f"  Ошибок: {total_games - total_correct}\n")
+            f.write(f"  Средняя точность: {avg_accuracy}%\n")
+            f.write(f"  Среднее время ответа: {round(avg_response, 2)} сек\n\n")
+            f.write(f"Изображения:\n")
+            f.write(f"  Реальных фото: {real_images}\n")
+            f.write(f"  ИИ-картинок: {ai_images}\n")
+            f.write(f"  Всего: {real_images + ai_images}\n\n")
+            
+            f.write("========== СТАТИСТИКА ПО КАТЕГОРИЯМ ==========\n")
+            for cat, total, correct, acc, avg_t in category_summary:
+                f.write(f"{cat}:\n")
+                f.write(f"  Игр: {total}\n")
+                f.write(f"  Точность: {acc}%\n")
+                f.write(f"  Среднее время: {avg_t} сек\n\n")
+            
+            if comparison_data:
+                f.write("========== СРАВНЕНИЕ ИИ VS РЕАЛЬНЫЕ ==========\n")
+                for label, total, correct, acc, avg_t in comparison_data:
+                    emoji = "🤖" if label == 'ai' else "📸"
+                    f.write(f"{emoji} {label.upper()}:\n")
+                    f.write(f"  Игр: {total}\n")
+                    f.write(f"  Точность: {acc}%\n")
+                    f.write(f"  Среднее время: {avg_t} сек\n\n")
+        
+        # Создаем JSON со всеми данными
+        full_stats = {
+            "date": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+            "total_users": total_users,
+            "active_users": active_users,
+            "total_games": total_games,
+            "total_correct": total_correct,
+            "avg_accuracy": avg_accuracy,
+            "avg_response_time": round(avg_response, 2),
+            "images": {
+                "real": real_images,
+                "ai": ai_images
+            },
+            "categories": {},
+            "comparison": {},
+            "hardest": [],
+            "easiest": []
         }
-    
-    save_stats_to_json(full_stats, f"full_stats_{datetime.now().strftime('%Y%m%d_%H%M')}.json")
-    
-    # Отправляем подтверждение
-    bot.reply_to(message, 
-        f"✅ **Статистика собрана!**\n\n"
-        f"📁 Файлы сохранены в папке `{STATS_DIR}`:\n"
-        f"• users_*.csv - данные пользователей\n"
-        f"• categories_*.csv - статистика по категориям\n"
-        f"• daily_*.csv - активность по дням\n"
-        f"• hardest_*.csv - самые сложные фото\n"
-        f"• easiest_*.csv - самые легкие фото\n\n"
-        f"📊 Всего пользователей: {total_users}\n"
-        f"🎮 Всего игр: {total_games}\n"
-        f"📈 Средняя точность: {avg_accuracy}%",
-        parse_mode="Markdown"
-    )
+        
+        for cat, total, correct, acc, avg_t in category_summary:
+            full_stats["categories"][cat] = {
+                "attempts": total,
+                "accuracy": acc,
+                "avg_time": avg_t
+            }
+        
+        for label, total, correct, acc, avg_t in comparison_data:
+            full_stats["comparison"][label] = {
+                "attempts": total,
+                "accuracy": acc,
+                "avg_time": avg_t
+            }
+        
+        for img, cat, label, attempts, correct, wrong, error in hardest_data:
+            full_stats["hardest"].append({
+                "filename": img,
+                "category": cat,
+                "type": label,
+                "attempts": attempts,
+                "error_rate": error
+            })
+        
+        for img, cat, label, attempts, correct, acc in easiest_data:
+            full_stats["easiest"].append({
+                "filename": img,
+                "category": cat,
+                "type": label,
+                "attempts": attempts,
+                "accuracy": acc
+            })
+        
+        with open(f"research_stats/full_stats_{timestamp}.json", 'w', encoding='utf-8') as f:
+            json.dump(full_stats, f, ensure_ascii=False, indent=2)
+        
+        # Формируем краткий отчет для Telegram
+        report = f"✅ **ПОЛНАЯ СТАТИСТИКА СОБРАНА!**\n\n"
+        report += f"📁 **Создано файлов:**\n"
+        report += f"• users_{timestamp}.csv - данные игроков\n"
+        report += f"• categories_{timestamp}.csv - детально по категориям\n"
+        report += f"• daily_{timestamp}.csv - активность по дням\n"
+        report += f"• hardest_{timestamp}.csv - топ-20 сложных фото\n"
+        report += f"• easiest_{timestamp}.csv - топ-20 легких фото\n"
+        report += f"• speed_{timestamp}.csv - анализ скорости ответов\n"
+        report += f"• full_stats_{timestamp}.json - все данные в JSON\n\n"
+        
+        report += f"📊 **Ключевые показатели:**\n"
+        report += f"• 👥 Всего пользователей: {total_users}\n"
+        report += f"• 🎮 Сыграно игр: {total_games}\n"
+        report += f"• 📈 Общая точность: {avg_accuracy}%\n"
+        report += f"• ⏱ Среднее время: {round(avg_response, 2)} сек\n\n"
+        
+        # Добавляем сравнение категорий
+        if category_summary:
+            best_cat = max(category_summary, key=lambda x: x[3])
+            worst_cat = min(category_summary, key=lambda x: x[3])
+            report += f"🏆 **Лучшая категория:** {best_cat[0]} ({best_cat[3]}%)\n"
+            report += f"📉 **Худшая категория:** {worst_cat[0]} ({worst_cat[3]}%)\n\n"
+        
+        # Добавляем сравнение ИИ vs Реальные
+        if len(comparison_data) == 2:
+            ai_acc = comparison_data[0][3] if comparison_data[0][0] == 'ai' else comparison_data[1][3]
+            real_acc = comparison_data[1][3] if comparison_data[1][0] == 'real' else comparison_data[0][3]
+            diff = abs(ai_acc - real_acc)
+            report += f"🤖 **ИИ распознают:** {ai_acc}%\n"
+            report += f"📸 **Реальные фото:** {real_acc}%\n"
+            report += f"📊 **Разница:** {diff}%\n\n"
+        
+        report += f"📥 **Скачай файлы командой:** `/get_stats имя_файла`"
+        
+        bot.send_message(message.chat.id, report, parse_mode="Markdown")
+        
+    except Exception as e:
+        bot.send_message(message.chat.id, f"❌ Ошибка при сборе статистики: {e}")
+        import traceback
+        traceback.print_exc()
 
 @bot.message_handler(commands=['list_stats'])
 def list_stats(message):
-    MY_ID = 1960661466  # 🔥 ТВОЙ ID
-    if message.from_user.id != MY_ID:
-        bot.reply_to(message, "⛔ Нет доступа")
-        return
-    
-    files = os.listdir(STATS_DIR)
-    if not files:
-        bot.reply_to(message, "📭 Папка статистики пуста")
-        return
-    
-    # Сортируем от новых к старым
-    files.sort(reverse=True)
-    
-    text = "📁 **Файлы статистики:**\n\n"
-    for f in files[:15]:  # показываем последние 15
-        size = os.path.getsize(os.path.join(STATS_DIR, f))
-        if size < 1024:
-            size_str = f"{size} B"
-        elif size < 1024*1024:
-            size_str = f"{size/1024:.1f} KB"
-        else:
-            size_str = f"{size/1024/1024:.1f} MB"
-        
-        text += f"• {f} ({size_str})\n"
-    
-    bot.reply_to(message, text, parse_mode="Markdown")
-
-@bot.message_handler(commands=['get_stats'])
-def get_stats(message):
-    MY_ID = 1960661466  # 🔥 ТВОЙ ID
+    MY_ID = 123456789  # 🔥 ТВОЙ ID
     if message.from_user.id != MY_ID:
         bot.reply_to(message, "⛔ Нет доступа")
         return
     
     try:
-        parts = message.text.split()
-        if len(parts) < 2:
-            # Показываем последние 5 файлов
-            files = sorted(os.listdir(STATS_DIR), reverse=True)[:5]
-            file_list = "\n".join([f"• {f}" for f in files])
-            bot.reply_to(message, 
-                f"❌ Укажи имя файла: `/get_stats имя_файла.csv`\n\n"
-                f"Последние файлы:\n{file_list}",
-                parse_mode="Markdown"
-            )
+        files = os.listdir("research_stats")
+        if not files:
+            bot.reply_to(message, "📭 Папка статистики пуста. Сначала выполни /research_stats")
             return
         
-        filename = parts[1]
-        filepath = os.path.join(STATS_DIR, filename)
+        # Сортируем от новых к старым
+        files.sort(reverse=True)
         
-        if not os.path.exists(filepath):
-            bot.reply_to(message, f"❌ Файл {filename} не найден")
-            return
-        
-        with open(filepath, 'rb') as f:
-            bot.send_document(message.chat.id, f, caption=f"📊 {filename}")
+        text = "📁 **Файлы статистики:**\n\n"
+        for f in files[:10]:  # показываем последние 10
+            size = os.path.getsize(os.path.join("research_stats", f))
+            if size < 1024:
+                size_str = f"{size} B"
+            elif size < 1024*1024:
+                size_str = f"{size/1024:.1f} KB"
+            else:
+                size_str = f"{size/1024/1024:.1f} MB"
             
+            text += f"• {f} ({size_str})\n"
+        
+        bot.send_message(message.chat.id, text, parse_mode="Markdown")
+        
     except Exception as e:
-        bot.reply_to(message, f"❌ Ошибка: {e}")
+        bot.send_message(message.chat.id, f"❌ Ошибка: {e}")
 
 # ========== ЗАПУСК ==========
 if __name__ == "__main__":
