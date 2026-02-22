@@ -472,7 +472,7 @@ def start(message):
         parse_mode="Markdown"
     )
 
-@bot.message_handler(commands=['game'])
+@bot.message_handler(commands=['🎮 ИГРАТЬ'])
 def play(message):
     image = get_random_image()
     
