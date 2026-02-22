@@ -751,27 +751,25 @@ def research_stats(message):
             json.dump(full_stats, f, ensure_ascii=False, indent=2)
         
         # Отправляем результат
-        bot.send_message(message.chat.id, 
-            f"✅ **ПОЛНАЯ СТАТИСТИКА СОБРАНА!**\n\n"
-            f"📁 **Создано файлов:**\n"
-            f"• users_{timestamp}.csv - {len(users_data)} пользователей\n"
-            f"• categories_{timestamp}.csv - данные по категориям\n"
-            f"• daily_{timestamp}.csv - активность по дням\n"
-            f"• hardest_{timestamp}.csv - топ-20 сложных фото\n"
-            f"• easiest_{timestamp}.csv - топ-20 легких фото\n"
-            f"• comparison_{timestamp}.csv - ИИ vs Реальные\n"
-            f"• summary_{timestamp}.txt - общая статистика\n"
-            f"• full_stats_{timestamp}.json - все данные в JSON\n\n"
-            f"📊 **Ключевые показатели:**\n"
-            f"• 👥 Всего игроков: {total_users}\n"
-            f"• 🎮 Сыграно игр: {total_games}\n"
-            f"• 📈 Общая точность: {avg_accuracy}%\n\n"
-            f"📥 Используй /list_stats и /get_stats для скачивания",
-            parse_mode="Markdown"
-        )
-        
-    except Exception as e:
-        bot.send_message(message.chat.id, f"❌ Ошибка: {str(e)}")
+result_text = (
+    f"✅ ПОЛНАЯ СТАТИСТИКА СОБРАНА!\n\n"
+    f"📁 Создано файлов:\n"
+    f"• users_{timestamp}.csv - {len(users_data)} пользователей\n"
+    f"• categories_{timestamp}.csv - данные по категориям\n"
+    f"• daily_{timestamp}.csv - активность по дням\n"
+    f"• hardest_{timestamp}.csv - топ-20 сложных фото\n"
+    f"• easiest_{timestamp}.csv - топ-20 легких фото\n"
+    f"• comparison_{timestamp}.csv - ИИ vs Реальные\n"
+    f"• summary_{timestamp}.txt - общая статистика\n"
+    f"• full_stats_{timestamp}.json - все данные в JSON\n\n"
+    f"📊 Ключевые показатели:\n"
+    f"• Всего игроков: {total_users}\n"
+    f"• Сыграно игр: {total_games}\n"
+    f"• Общая точность: {avg_accuracy}%\n\n"
+    f"📥 Используй /list_stats и /get_stats для скачивания"
+)
+
+bot.send_message(message.chat.id, result_text)
 
 @bot.message_handler(commands=['list_stats'])
 def list_stats(message):
