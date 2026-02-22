@@ -472,26 +472,20 @@ def start(message):
         parse_mode="Markdown"
     )
 
-@bot.message_handler(func=lambda msg: msg.text == "🎮 ИГРАТЬ")
+@bot.message_handler(commands=['game'])
 def play(message):
     image = get_random_image()
     
     if not image:
-        bot.reply_to(
-            message,
-            "😕 Пока нет фото в базе. Попробуй позже!",
-            reply_markup=get_main_keyboard()
-        )
+        bot.reply_to(message, "😕 Нет фото в базе")
         return
     
     image_id, file_path, correct_label = image
     
-    current_games[message.chat.id] = {
-        'image_id': image_id,
-        'correct': correct_label,
-        'start_time': time.time()
-    }
+    # 🔧 АВТОМАТИЧЕСКИ ИСПРАВЛЯЕМ РАЗМЕР ФОТО
+    safe_path = fix_image_size(file_path)
     
+    # Создаем клавиатуру
     keyboard = telebot.types.InlineKeyboardMarkup()
     keyboard.row(
         telebot.types.InlineKeyboardButton("📸 РЕАЛЬНОЕ", callback_data=f"real_{image_id}"),
@@ -499,7 +493,8 @@ def play(message):
     )
     
     try:
-        with open(file_path, 'rb') as photo:
+        # Отправляем фото (исправленное или оригинал)
+        with open(safe_path, 'rb') as photo:
             bot.send_photo(
                 message.chat.id,
                 photo,
@@ -507,8 +502,17 @@ def play(message):
                 reply_markup=keyboard,
                 parse_mode="Markdown"
             )
+        
+        # Если использовали временный файл - удаляем его
+        if safe_path != file_path:
+            os.remove(safe_path)
+            print(f"🗑️ Временный файл удален: {os.path.basename(safe_path)}")
+            
     except Exception as e:
         bot.reply_to(message, f"😕 Ошибка загрузки фото: {e}")
+        # Если ошибка, тоже удаляем временный файл
+        if safe_path != file_path and os.path.exists(safe_path):
+            os.remove(safe_path)
 
 @bot.callback_query_handler(func=lambda call: call.data.startswith(('real_', 'ai_')))
 def handle_answer(call):
